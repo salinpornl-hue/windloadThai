@@ -184,21 +184,21 @@ with tab1:
         fig.add_shape(type="line", x0=0, y0=f['z_top'], x1=B, y1=f['z_top'],
                       line=dict(color="rgba(75, 85, 99, 0.3)", width=1.5, dash="dash"))
         
-        # ข้อความบอกความสูงสะสม (ฝั่งขวาอาคาร) - ใช้ HTML <b> เพื่อตัวหนา
+        # ข้อความบอกความสูงสะสม (ฝั่งขวาอาคาร)
         fig.add_annotation(x=B + 0.3, y=f['z_top'], text=f"<b>z = {f['z_top']:.2f} m</b>", 
                            showarrow=False, xanchor="left", font=dict(size=11, color="#2563EB"))
         
-        # ชื่อชั้นและความสูงของตัวชั้นเอง (กึ่งกลางโครงสร้าง) - แก้ไขเอา italic ออกจาก font เปลี่ยนมาใช้ HTML <i> แทนที่นี่เรียบร้อยครับ!
+        # ชื่อชั้นและความสูงของตัวชั้นเอง (กึ่งกลางโครงสร้าง)
         fig.add_annotation(x=B/2, y=f['z_mid'], text=f"<i>ชั้นที่ {f['floor_num']} (h = {f['height']} ม.)</i>", 
                            showarrow=False, font=dict(size=11, color="#4B5563"))
         
-        # วาดลูกศรหน่วยแรงลมด้านรับลม (Windward) - ใช้ HTML <b> เพื่อตัวหนา
+        # วาดลูกศรหน่วยแรงลมด้านรับลม (Windward)
         arrow_len = 1.5 + (f['p_windward'] / 40.0) 
         fig.add_annotation(x=0, y=f['z_mid'], ax=-arrow_len, ay=f['z_mid'], xref="x", yref="y", axref="x", ayref="y",
                            text=f"<b>{f['p_windward']:.1f} kgf/m²</b>", showarrow=True, arrowhead=2, arrowsize=1.2, arrowcolor="#DC2626",
                            font=dict(color="#DC2626", size=10), xanchor="right")
 
-    # วาดลูกศรแรงลมด้านตามลม (Leeward) - ใช้ HTML <b> เพื่อตัวหนา
+    # วาดลูกศรแรงลมด้านตามลม (Leeward) - แสดงเป็นแรงกระทำสม่ำเสมอด้านหลังตึก
     fig.add_annotation(x=B + 4.5, y=H_total/2, ax=B, ay=H_total/2, xref="x", yref="y", axref="x", ayref="y",
                        text=f"<b>Leeward Suction<br>{p_leeward:.1f} kgf/m²<br>(คงที่ตลอดแนวความสูง)</b>", showarrow=True, 
                        arrowhead=2, arrowsize=1.2, arrowcolor="#EA580C", font=dict(color="#EA580C", size=11))
@@ -213,7 +213,6 @@ with tab1:
         showlegend=False,
         plot_bgcolor="white"
     )
-    # เพิ่ม Grid ให้กราฟอ่านระยะง่ายขึ้นแบบพิมพ์เขียนวิศวกรรม
     fig.update_xaxes(showgrid=True, gridcolor='#E5E7EB')
     fig.update_yaxes(showgrid=True, gridcolor='#E5E7EB')
     
@@ -262,7 +261,6 @@ with tab2:
     *(หมายเหตุ: ค่าสัมประสิทธิ์ประกอบการเปิดโล่ง $C_e$ จะเปลี่ยนไปตามความสูงกึ่งกลางจริงของชั้นนั้นๆ)*
     """)
     
-    # แสดงการแทนค่ารายชั้น ใช้ st.expander ที่ถูกต้องและเปิดแสดงผลพร้อมกัน
     for f in floors_data:
         with st.expander(f"🔍 การสับเปลี่ยนตัวเลขและสูตรคำนวณของ: ชั้นที่ {f['floor_num']}", expanded=True):
             st.markdown(f"""
@@ -303,42 +301,49 @@ with tab2:
 # ------------------------------------------
 with tab3:
     st.markdown("#### 💾 สรุปหน่วยแรงลมสุทธิผสมตาม Load Cases สำหรับนำไปกรอกซอฟต์แวร์วิเคราะห์โครงสร้าง")
-    st.markdown("วิศวกรโครงสร้างต้องนำแรงลมภายนอกมาคำนวณหักล้างรวมกับแรงดันภายในอาคารตามกฎแรงลมสุทธิ ($p_{{net}} = p_{{ext}} - p_{{int}}$) โดยแบ่งออกเป็น 2 กรณีวิกฤตที่สุด:")
+    st.markdown("ตารางนี้สรุปหน่วยแรงลมแยกรายชั้นทั้งฝั่ง **รับลม (Windward)** และ **ตามลม (Leeward)** พร้อมคำนวณค่าแรงลมสุทธิผสมกับแรงดันภายใน ($p_{net} = p_{ext} - p_{int}$)")
 
-    # สร้างชุดข้อมูลแบบเป็นตารางเพื่อส่งออกแอป
+    # สร้างชุดข้อมูลแบบเป็นตารางโดยใส่ทั้งฝั่ง Windward และ Leeward รายชั้นคู่กัน
     summary_rows = []
     for f in floors_data:
         p_w = f['p_windward']
-        net_w_case1 = p_w - p_internal_neg  # ลมภายนอกพัดอัด + ลมภายในช่วยดูดทางเดียวกัน
-        net_w_case2 = p_w - p_internal_pos  # ลมภายนอกพัดอัด + ลมภายในดันสวนทางกัน
+        # ฝั่งรับลม (Windward Net)
+        net_w_case1 = p_w - p_internal_neg  # ภายนอกพัดอัด + ภายในช่วยดูด (วิกฤตฝั่งรับลม)
+        net_w_case2 = p_w - p_internal_pos  # ภายนอกพัดอัด + ภายในดันสวน
+        
+        # ฝั่งตามลม (Leeward Net - แม้ค่าภายนอกจะคงที่ แต่การเอามาใส่ตารางจะช่วยให้วิศวกรส่งออกข้อมูลได้ง่าย)
+        net_l_case1 = p_leeward - p_internal_pos  # ภายนอกดูดออก + ภายในช่วยดันออก (วิกฤตฝั่งตามลม แรงดูดสุทธิสูงสุด)
+        net_l_case2 = p_leeward - p_internal_neg  # ภายนอกดูดออก + ภายในช่วยดูดสวน
         
         summary_rows.append({
             "Story": f"Floor {f['floor_num']}",
             "Elevation Range (m)": f"{f['z_bottom']:.2f} to {f['z_top']:.2f}",
-            "Windward Ext. (kgf/m²)": round(p_w, 2),
-            "Case 1: Net Windward (p_ext - p_int-)": round(net_w_case1, 2),
-            "Case 2: Net Windward (p_ext - p_int+)": round(net_w_case2, 2)
+            "Windward Ext (kgf/m²)": round(p_w, 2),
+            "Net Windward Case 1 (+Internal Suction)": round(net_w_case1, 2),
+            "Net Windward Case 2 (+Internal Pressure)": round(net_w_case2, 2),
+            "Leeward Ext (kgf/m²)": round(p_leeward, 2),
+            "Net Leeward Case 1 (+Internal Pressure)": round(net_l_case1, 2),
+            "Net Leeward Case 2 (+Internal Suction)": round(net_l_case2, 2)
         })
         
     df_summary = pd.DataFrame(summary_rows)
     
-    # แสดงผลตารางแบบสะอาดตา
+    # แสดงผลตารางแบบละเอียดครบถ้วน
     st.dataframe(df_summary, use_container_width=True, hide_index=True)
     
     # ฟังก์ชันดาวน์โหลดตารางเป็น CSV เพื่อนำไปเปิดใน Microsoft Excel
     csv_data = df_summary.to_csv(index=False).encode('utf-8-sig')
     st.download_button(
-        label="📥 ดาวน์โหลดตารางสรุปโหลดนี้เป็นไฟล์สำหรับ Excel (.csv)",
+        label="📥 ดาวน์โหลดตารางโหลดแยกรายชั้นฉบับสมบูรณ์ (.csv)",
         data=csv_data,
-        file_name="Wind_Load_Summary_MJP1311.csv",
+        file_name="Wind_Load_Complete_Per_Floor.csv",
         mime="text/csv"
     )
     
-    st.markdown(f"""
-    <div style="background-color: #EFF6FF; padding: 15px; border-radius: 8px; margin-top: 15px; border-left: 5px solid #1D4ED8;">
-    <strong>💡 บันทึกเพิ่มเติมสำหรับผนังด้านตามลม (Leeward Wall Design Summary):</strong><br>
-    เนื่องจากแรงลมด้านตามลมมีค่าสม่ำเสมอเท่ากันตลอดทุกช่วงความสูง ค่าแรงลมสุทธิวิกฤตสุดที่กระทำต่อโครงสร้างคือ:<br>
-    • <strong>กรณีวิกฤตสุทธิสูงสุด (แรงดูดภายนอก + แรงอัดภายในพัดหนุนกัน):</strong> 
-    $p_{{net}} = p_l - p_{{int+}} = {p_leeward:.2f} - ({p_internal_pos:.2f})$ = <strong><span style="color:#DC2626;">{(p_leeward - p_internal_pos):.2f} kgf/m²</span></strong> (เป็นแรงดูดอย่างรุนแรงพยายามดึงผนังให้หลุดออกจากตัวโครงสร้างอาคาร)
+    st.markdown("""
+    <div style="background-color: #EFF6FF; padding: 15px; border-radius: 8px; margin-top: 15px; border-left: 5px solid #1D4ED8; font-size:0.95rem;">
+    <strong>💡 คำแนะนำในการป้อนโหลดเข้าโปรแกรมวิเคราะห์โครงสร้าง (เช่น ETABS / SAP2000):</strong><br>
+    1. <strong>ฝั่งรับลม (Windward):</strong> ป้อนแรงดันแบบแปรผันตามความสูงแต่ละชั้น โดยแนะนำให้ใช้ค่าจากช่อง <code>Net Windward Case 1</code> เป็นกรณีวิกฤตหลัก<br>
+    2. <strong>ฝั่งตามลม (Leeward):</strong> แม้แรงลมภายนอก (Leeward Ext) จะเท่ากันทุกชั้นที่ <code>{p_leeward:.2f} kgf/m²</code> แต่เมื่อผสมแรงดันภายในอาคาร ค่าที่วิกฤตที่สุดคือ <code>Net Leeward Case 1</code> (แรงดูดดึงผนังหลุดออกนอกอาคารรุนแรงที่สุด) ป้อนเป็น Uniform Load กระทำตลอดความสูงอาคารได้เลยครับ
     </div>
-    """, unsafe_allow_html=True)
+    """.format(p_leeward=p_leeward), unsafe_allow_html=True)
