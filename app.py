@@ -239,12 +239,19 @@ with tab1:
     with m4: st.markdown(f'<div class="card-stat"><p>แรงลมรวมฐาน (V_Wind)</p><h3 style="color:#2563EB;">{V_wind_max:.2f} kN</h3></div>', unsafe_allow_html=True)
     
     st.markdown("---")
-    view_opt = st.radio("🔘 **เลือกกรณีโหลด (Load Case) เพื่อสั่งวาดแผนภาพทุกรูปแบบอัตโนมัติ:**", 
-                        ["External", "Case 1", "Case 2"], 
-                        captions=["แรงลมภายนอก 100%", "สุทธิ Case 1: ผสมแรงดูดภายใน (-)", "สุทธิ Case 2: ผสมแรงดันภายใน (+)"], horizontal=True)
     
-    # วาดเรียงบนล่าง (Full Width) ตามคำขอ
-    st.plotly_chart(plot_cross_section(floors_data, view_opt), use_container_width=True)
+    # เพิ่ม Layout แบ่งฝั่งซ้าย (เลือก Case) และฝั่งขวา (เลือกหน่วย)
+    col_opt1, col_opt2 = st.columns([3, 2])
+    with col_opt1:
+        view_opt = st.radio("🔘 **เลือกกรณีโหลด (Load Case):**", 
+                            ["External", "Case 1", "Case 2"], 
+                            captions=["แรงลมภายนอก 100%", "สุทธิ Case 1: ผสมแรงดูดภายใน (-)", "สุทธิ Case 2: ผสมแรงดันภายใน (+)"], horizontal=True)
+    with col_opt2:
+        unit_opt = st.radio("📐 **เลือกหน่วยแสดงผลบนกราฟิก:**", 
+                            ["kgf/m² (หน่วยแรงกระจาย)", "kN (แรงลัพธ์แบบจุด)"], horizontal=True)
+    
+    # ส่งค่า unit_opt เข้าไปในฟังก์ชันด้วย เพื่อให้รูปอัปเดตตาม
+    st.plotly_chart(plot_cross_section(floors_data, view_opt, unit_opt), use_container_width=True)
     st.markdown("---")
     st.plotly_chart(plot_elevation(floors_data, L, "Front View - ตั้งฉากลม L"), use_container_width=True)
     st.markdown("---")
