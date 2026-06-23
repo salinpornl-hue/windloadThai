@@ -161,38 +161,55 @@ else:
 # ==========================================
 # PLOTLY FUNCTIONS (ระบบลูกศรอัจฉริยะ)
 # ==========================================
-def plot_cross_section(floors, mode):
+
+def plot_cross_section(floors, mode, unit_display):
     fig = go.Figure()
     # วาดรูปอาคาร
     fig.add_trace(go.Scatter(x=[0, B, B, 0, 0], y=[0, 0, H_total, H_total, 0], fill="toself", fillcolor="rgba(30,58,138,0.05)", line=dict(color="#1E3A8A", width=3), name="โครงสร้าง"))
     
-    def add_arrow(x_surf, y_pos, val, face):
-        arr_len = 1.5 + abs(val)/35.0
+    # เช็คว่าผู้ใช้เลือกหน่วยอะไร
+    is_kn = "kN" in unit_display
+    unit_label = "kN" if is_kn else "kgf/m²"
+
+    def add_arrow(x_surf, y_pos, val_kgf, face, area=None):
+        # ถ้าเลือก kN ให้เอาแรงดัน (kgf/m²) x พื้นที่ (m²) x 0.00980665
+        val = (val_kgf * area * 0.00980665) if (is_kn and area is not None) else val_kgf
+        
+        # ปรับสเกลความยาวลูกศรให้สวยงามตามหน่วยที่เลือก
+        arr_len = 1.5 + abs(val)/(15.0 if is_kn else 35.0) 
+        
         if face == "windward": # ซ้าย
-            if val >= 0: ax, ay, x, y, col, x_anc = -arr_len, y_pos, 0, y_pos, "#DC2626", "right" # อัดเข้า
-            else: ax, ay, x, y, col, x_anc = 0, y_pos, -arr_len, y_pos, "#9333EA", "left" # ดูดออก
+            if val >= 0: ax, ay, x, y, col, x_anc = -arr_len, y_pos, 0, y_pos, "#DC2626", "right"
+            else: ax, ay, x, y, col, x_anc = 0, y_pos, -arr_len, y_pos, "#9333EA", "left"
         elif face == "leeward": # ขวา
-            if val >= 0: ax, ay, x, y, col, x_anc = B+arr_len, y_pos, B, y_pos, "#DC2626", "left" # อัดเข้า (ซ้าย)
-            else: ax, ay, x, y, col, x_anc = B, y_pos, B+arr_len, y_pos, "#EA580C", "right" # ดูดออก (ขวา)
+            if val >= 0: ax, ay, x, y, col, x_anc = B+arr_len, y_pos, B, y_pos, "#DC2626", "left"
+            else: ax, ay, x, y, col, x_anc = B, y_pos, B+arr_len, y_pos, "#EA580C", "right"
         elif face == "roof": # บน
-            ax, ay, x, y, col, x_anc = x_surf, H_total+(arr_len), x_surf, H_total, "#9333EA", "center" # ดูดขึ้น
+            ax, ay, x, y, col, x_anc = x_surf, H_total+(arr_len), x_surf, H_total, "#9333EA", "center"
             
+        # สร้าง Label กำกับลูกศร
+        text_lbl = f"<b>{val:.1f} {unit_label}</b>" if is_kn else f"<b>{val:.1f}</b>"
         fig.add_annotation(x=x, y=y, ax=ax, ay=ay, xref="x", yref="y", axref="x", ayref="y",
-                           text=f"<b>{val:.1f}</b>", showarrow=True, arrowhead=2, arrowsize=1.2, arrowcolor=col, font=dict(color=col, size=13), xanchor=x_anc)
+                           text=text_lbl, showarrow=True, arrowhead=2, arrowsize=1.2, arrowcolor=col, font=dict(color=col, size=13), xanchor=x_anc)
 
     for f in floors:
         fig.add_shape(type="line", x0=0, y0=f['z_top'], x1=B, y1=f['z_top'], line=dict(color="gray", width=1, dash="dash"))
         val_w = f['p_w'] if mode == "External" else (f['net_w_c1'] if mode == "Case 1" else f['net_w_c2'])
-        add_arrow(0, f['z_mid'], val_w, "windward")
-        fig.add_annotation(x=B/2, y=f['z_mid'], text=f"ชั้น {f['floor']}", showarrow=False, font=dict(color="#4B5563"))
+        # โยน Area หน้าตรงของชั้นนั้นๆ เข้าไปคำนวณ kN
+        add_arrow(0, f['z_mid'], val_w, "windward", area=f['area_front'])
+        fig.add_annotation(x=B/2, y=f['z_mid'], text=f"ชั้น {f['floor']} (h={f['h']}ม.)", showarrow=False, font=dict(color="#4B5563"))
 
+    # วาด Leeward (ใช้พื้นที่รวมของแผงหลัง L * H_total)
     val_l = p_leeward if mode == "External" else (net_l_c1 if mode == "Case 1" else net_l_c2)
-    add_arrow(B, H_total/2, val_l, "leeward")
+    add_arrow(B, H_total/2, val_l, "leeward", area=(L * H_total))
     
+    # วาด Roof (ใช้พื้นที่ราบหลังคา B * L)
     val_r = p_roof if mode == "External" else (net_r_c1 if mode == "Case 1" else net_r_c2)
-    add_arrow(B/2, H_total, val_r, "roof")
+    add_arrow(B/2, H_total, val_r, "roof", area=(B * L))
 
-    fig.update_layout(title=f"<b>1. แผนภาพหน้าตัดแรงดันลม (Cross Section) - โหมด {mode}</b>", xaxis_title="ความกว้างอาคาร B (ม.)", yaxis_title="ความสูงอาคาร z (ม.)", xaxis_range=[-7, B+7], yaxis_range=[-1, H_total+4], height=500, plot_bgcolor="white", margin=dict(t=40,b=20))
+    fig.update_layout(title=f"<b>1. แผนภาพหน้าตัดแรงดันลม (Cross Section) - โหมด {mode} ({unit_label})</b>", 
+                      xaxis_title="ความกว้างอาคาร B (ม.)", yaxis_title="ความสูงอาคาร z (ม.)", 
+                      xaxis_range=[-7, B+7], yaxis_range=[-1, H_total+4], height=500, plot_bgcolor="white", margin=dict(t=40,b=20))
     fig.update_xaxes(showgrid=True, gridcolor='#F3F4F6'); fig.update_yaxes(showgrid=True, gridcolor='#F3F4F6')
     return fig
 
