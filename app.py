@@ -42,20 +42,21 @@ def get_Ce_details(z, exposure):
     return ce, explanation
 
 # ==========================================
-# Streamlit UI Setup & Styling
+# Streamlit UI Setup
 # ==========================================
-st.set_page_config(page_title="Wind Load Analyzer Pro | มยผ. 1311-50", layout="wide")
+st.set_page_config(page_title="Wind Load & Base Shear Analyzer", layout="wide")
 
 st.markdown("""
     <style>
     .main-title { font-size: 2.3rem; font-weight: 800; color: #1E3A8A; margin-bottom: 5px; }
     .sub-title { font-size: 1.1rem; color: #4B5563; margin-bottom: 25px; }
     .section-header { font-size: 1.4rem; font-weight: 700; color: #1E3A8A; margin-top: 15px; margin-bottom: 15px; border-bottom: 2px solid #E5E7EB; padding-bottom: 5px; }
+    .verdict-box { padding: 15px; border-radius: 8px; font-size: 1.1rem; font-weight: bold; margin-top: 10px; }
     </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<div class="main-title">🌪️ Wind Load Analyzer Pro (มยผ. 1311-50)</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-title">ระบบวิเคราะห์แรงลมสุทธิ (Net Pressure) และแรงลัพธ์รวมรายชั้น (Story Force) สาหรับวิศวกรโครงสร้าง</div>', unsafe_allow_html=True)
+st.markdown('<div class="main-title">🌪️ Wind Load & Base Shear Analyzer Pro</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-title">ระบบคำนวณแรงลมสุทธิ, พื้นที่รับแรงดันแผ่ (Tributary Area) และเปรียบเทียบแรงเฉือนที่ฐานอาคาร (Base Shear Comparison)</div>', unsafe_allow_html=True)
 
 # ==========================================
 # SIDEBAR
@@ -64,7 +65,7 @@ st.sidebar.image("https://img.icons8.com/fluency/96/wind.png", width=60)
 st.sidebar.markdown("### ⚙️ ข้อกำหนดและสเปกแรงลม")
 
 st.sidebar.subheader("1. ข้อมูลสถานที่ตั้งและการ Auto-V")
-prov_choice = st.sidebar.selectbox("พื้นที่ตั้งอาคาร (อ้างอิงความเร็วลมตามมาตรฐาน)", list(PROVINCE_V.keys()))
+prov_choice = st.sidebar.selectbox("พื้นที่ตั้งอาคาร", list(PROVINCE_V.keys()))
 
 if "Manual Input" in prov_choice:
     V_input = st.sidebar.number_input("ความเร็วลมพื้นฐาน V (m/s)", value=25.0, step=1.0)
@@ -76,16 +77,15 @@ exposure = st.sidebar.selectbox("สภาพภูมิประเทศ (Exp
 Iw_input = st.sidebar.selectbox("ค่าประกอบความสำคัญอาคาร (Iw)", [1.0, 1.15], index=0)
 
 st.sidebar.markdown("---")
-st.sidebar.subheader("2. สัมประสิทธิ์แรงดันภายนอกและภายใน")
-enclosure = st.sidebar.selectbox("ลักษณะการปิดล้อมของอาคาร", ["อาคารปิดทึบ (Enclosed Building)", "อาคารปิดล้อมบางส่วน (Partially Enclosed)"])
+st.sidebar.subheader("🚨 2. แรงแผ่นดินไหวเพื่อเปรียบเทียบ")
+V_EQ_input = st.sidebar.number_input("แรงเฉือนที่ฐานจากแผ่นดินไหว V_EQ (kN)\n(ได้จากการเปิดเล่มคำนวณแผ่นดินไหว)", value=120.0, step=10.0, min_value=0.0)
+
+st.sidebar.markdown("---")
+st.sidebar.subheader("3. สัมประสิทธิ์รูปทรงอาคาร")
 Cg_input = st.sidebar.number_input("ค่าประกอบลมกระโชก (Cg)", value=2.0, step=0.1)
-
-# สัมประสิทธิ์แยกส่วนตามรูปทรงอาคารสี่เหลี่ยม
-Cp_w = st.sidebar.number_input("Cp ผนังด้านรับลม (Windward)", value=0.8, step=0.05)
-Cp_l = st.sidebar.number_input("Cp ผนังด้านตามลม (Leeward)", value=-0.5, step=0.05)
-Cp_s = st.sidebar.number_input("Cp ผนังด้านข้าง (Sidewall)", value=-0.7, step=0.05)
-Cp_r = st.sidebar.number_input("Cp หลังคาแบน (Flat Roof Uplift)", value=-0.7, step=0.05)
-
+Cp_w = st.sidebar.number_input("Cp ผนังรับลม (Windward)", value=0.8, step=0.05)
+Cp_l = st.sidebar.number_input("Cp ผนังตามลม (Leeward)", value=-0.5, step=0.05)
+enclosure = st.sidebar.selectbox("ลักษณะการปิดล้อม", ["อาคารปิดทึบ (Enclosed)", "อาคารปิดล้อมบางส่วน (Partially)"])
 GCpi = 0.55 if "Partially" in enclosure else 0.18
 
 # ==========================================
@@ -110,29 +110,17 @@ with st.expander("📐 ปรับแต่งความสูงแยกแ
 
 H_total = sum(floor_heights)
 
-# --- [ENGINE CHECKER]: ตรวจสอบคุณสมบัติอาคารไหวตัวง่าย ---
-slenderness = H_total / B
-if H_total > 40.0 or slenderness > 4.0:
-    st.warning(f"⚠️ **คำเตือนทางวิศวกรรม (มยผ. 1311-50):** อาคารนี้เข้าข่ายเป็น **'อาคารไหวตัวง่าย (Flexible Building)'** เนื่องจากความสูง H ({H_total:.2f} ม.) > 40 ม. หรือ อัตราส่วนความเพรียว H/B ({slenderness:.2f}) > 4 มาตรฐานกำหนดให้ต้องคำนวณค่าประกอบลมกระโชก ($C_g$) ด้วยวิธีพลศาสตร์อย่างละเอียด ห้ามตรึงค่าคงที่ที่ 2.0")
-
 # ==========================================
 # Engine Core Processing
 # ==========================================
 q = calculate_q(V_input)
-Ce_H, Ce_H_exp = get_Ce_details(H_total, exposure)
+Ce_H, _ = get_Ce_details(H_total, exposure)
 qh = q * Ce_H
 
-# แรงภายนอกและแรงภายใน (คงที่อิงตามความสูงยอดอาคาร H)
 p_leeward = Iw_input * qh * Cg_input * Cp_l 
-p_roof_ext = Iw_input * qh * Cg_input * Cp_r
 p_internal_pos = qh * GCpi     
 p_internal_neg = qh * (-GCpi)  
 
-# แรงลัพธ์สุทธิหลังคา
-net_roof_case1 = p_roof_ext - p_internal_neg
-net_roof_case2 = p_roof_ext - p_internal_pos
-
-# แรงลัพธ์สุทธิฝั่งตามลม
 net_l_case1 = p_leeward - p_internal_neg  
 net_l_case2 = p_leeward - p_internal_pos  
 
@@ -147,209 +135,168 @@ for i in range(num_stories):
     
     Ce_mid, Ce_mid_exp = get_Ce_details(z_mid, exposure)
     p_w_z = Iw_input * q * Ce_mid * Cg_input * Cp_w
-    p_s_z = Iw_input * q * Ce_mid * Cg_input * Cp_s  # ผนังข้างภายนอก
     
-    # คำนวณ Net Pressure รายชั้น
     net_w_case1 = p_w_z - p_internal_neg
     net_w_case2 = p_w_z - p_internal_pos
     
-    net_s_case1 = p_s_z - p_internal_neg
-    net_s_case2 = p_s_z - p_internal_pos
+    # คำนวณพื้นที่รับลมของชั้นนี้ (Tributary Area) = ความยาวอาคาร L * ความสูงชั้น h
+    trib_area = L * h_current
     
-    # คำนวณ Story Force (แรงรวมกระทำรายชั้นเข้าสู่โครงสร้างหลัก)
-    # F = (p_net_windward + |p_net_leeward|) * L_ตั้งฉากลม * h_floor
-    f_story_kgf_c1 = (net_w_case1 + abs(net_l_case1)) * L * h_current
+    # Story Force (kN) = (p_net_windward + |p_net_leeward|) * Area / 100 
+    # (หมายเหตุ: แรงลมรวมคิดจากแรงผลักด้านหน้า + แรงดูดดึงด้านหลังอาคารรวมกัน)
+    f_story_kgf_c1 = (net_w_case1 + abs(net_l_case1)) * trib_area
     f_story_kn_c1 = f_story_kgf_c1 * 0.00980665
     
-    f_story_kgf_c2 = (net_w_case2 + abs(net_l_case2)) * L * h_current
+    f_story_kgf_c2 = (net_w_case2 + abs(net_l_case2)) * trib_area
     f_story_kn_c2 = f_story_kgf_c2 * 0.00980665
     
     floors_data.append({
         "floor_num": i + 1, "height": h_current, "z_bottom": z_bottom, "z_top": z_top, "z_mid": z_mid,
-        "Ce": Ce_mid, "Ce_exp": Ce_mid_exp, "p_windward": p_w_z, "p_sidewall_ext": p_s_z,
+        "Ce": Ce_mid, "p_windward": p_w_z, "trib_area": trib_area,
         "net_w_case1": net_w_case1, "net_w_case2": net_w_case2,
-        "net_s_case1": net_s_case1, "net_s_case2": net_s_case2,
         "f_story_kn_c1": f_story_kn_c1, "f_story_kn_c2": f_story_kn_c2
     })
     z_cumulative = z_top
 
-# ==========================================
-# Helper Function: วาดลูกศรและกราฟิก
-# ==========================================
-def plot_building_wind(floors, view_mode):
-    fig = go.Figure()
-    
-    # วาดตัวอาคาร
-    fig.add_trace(go.Scatter(
-        x=[0, B, B, 0, 0], y=[0, 0, H_total, H_total, 0], 
-        fill="toself", fillcolor="rgba(30, 58, 138, 0.05)", line=dict(color="#1E3A8A", width=3), name="โครงสร้าง"
-    ))
-    
-    def add_arrow(x_wall, y_pos, val, is_windward):
-        arrow_len = 1.5 + abs(val) / 30.0 
-        if is_windward:
-            if val >= 0:
-                ax, ay, x, y = -arrow_len, y_pos, 0, y_pos
-                color, text_pos = "#DC2626", "right"
-            else:
-                ax, ay, x, y = 0, y_pos, -arrow_len, y_pos
-                color, text_pos = "#9333EA", "left"
-        else:
-            if val >= 0:
-                ax, ay, x, y = B + arrow_len, y_pos, B, y_pos
-                color, text_pos = "#DC2626", "left"
-            else:
-                ax, ay, x, y = B, y_pos, B + arrow_len, y_pos
-                color, text_pos = "#EA580C", "right"
-                
-        fig.add_annotation(x=x, y=y, ax=ax, ay=ay, xref="x", yref="y", axref="x", ayref="y",
-                           text=f"<b>{val:.1f} kgf/m²</b>", showarrow=True, arrowhead=2, arrowsize=1.2, 
-                           arrowcolor=color, font=dict(color=color, size=10), xanchor=text_pos)
+# หาแรงเฉือนที่ฐานรวมจากลม (Base Shear from Wind)
+V_wind_case1 = sum([f['f_story_kn_c1'] for f in floors_data])
+V_wind_case2 = sum([f['f_story_kn_c2'] for f in floors_data])
+V_wind_max = max(V_wind_case1, V_wind_case2)
 
-    # วาดแรงรายชั้นภายนอก/สุทธิ
+# ==========================================
+# Function วาดรูปหน้าตัดแรงลม (Cross Section)
+# ==========================================
+def plot_cross_section(floors, view_mode):
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=[0, B, B, 0, 0], y=[0, 0, H_total, H_total, 0], fill="toself", fillcolor="rgba(30, 58, 138, 0.05)", line=dict(color="#1E3A8A", width=3)))
+    
     for f in floors:
         fig.add_shape(type="line", x0=0, y0=f['z_top'], x1=B, y1=f['z_top'], line=dict(color="rgba(75, 85, 99, 0.3)", width=1.5, dash="dash"))
-        
-        if view_mode == "External": val_w = f['p_windward']
-        elif view_mode == "Case 1": val_w = f['net_w_case1']
-        else: val_w = f['net_w_case2']
-            
-        add_arrow(x_wall=0, y_pos=f['z_mid'], val=val_w, is_windward=True)
-        
-        # เพิ่มป้ายแสดงค่า Story Force เป็นหัวลูกศรวิ่งเข้า Center ของชั้นนั้นๆ แทน
-        f_force = f['f_story_kn_c1'] if view_mode == "Case 1" else f['f_story_kn_c2']
-        if view_mode != "External":
-            fig.add_annotation(x=B/2, y=f['z_mid'] + 0.4, text=f"📊 <b>F_story = {f_force:.1f} kN</b>",
-                               showarrow=False, font=dict(color="#1D4ED8", size=10), bgcolor="white", opacity=0.85)
+        val_w = f['p_windward'] if view_mode == "External" else (f['net_w_case1'] if view_mode == "Case 1" else f['net_w_case2'])
+        arrow_len = 1.5 + abs(val_w) / 30.0
+        fig.add_annotation(x=0, y=f['z_mid'], ax=-arrow_len, ay=f['z_mid'], xref="x", yref="y", axref="x", ayref="y",
+                           text=f"<b>{val_w:.1f} kgf/m²</b>", showarrow=True, arrowhead=2, arrowcolor="#DC2626")
+    
+    val_l = p_leeward if view_mode == "External" else (net_l_case1 if view_mode == "Case 1" else net_l_case2)
+    fig.add_annotation(x=B, y=H_total/2, ax=B+2, ay=H_total/2, text=f"<b>{val_l:.1f} kgf/m²</b>", showarrow=True, arrowhead=2, arrowcolor="#EA580C")
+    
+    fig.update_layout(title="<b>1. แผนภาพหน่วยแรงลมหน้าตัดอาคาร (Cross Section View)</b>", xaxis_title="ความกว้างอาคาร B (ม.)", yaxis_title="ความสูง z (ม.)", xaxis_range=[-5, B+5], yaxis_range=[-1, H_total+2], height=400, plot_bgcolor="white")
+    return fig
 
-    if view_mode == "External": val_l = p_leeward
-    elif view_mode == "Case 1": val_l = net_l_case1
-    else: val_l = net_l_case2
-        
-    add_arrow(x_wall=B, y_pos=H_total/2, val=val_l, is_windward=False)
+# ==========================================
+# Function วาดรูปพื้นที่รับแรงลม (Front Elevation)
+# ==========================================
+def plot_front_elevation(floors, L):
+    fig = go.Figure()
+    # วาดแผงผนังรับลมทั้งหมดแยกสีตามชั้น เพื่อให้เห็นว่าหน่วย kgf/m2 คูณกับพื้นที่ตรงไหนถึงตรงไหน
+    for f in floors:
+        fig.add_trace(go.Scatter(
+            x=[0, L, L, 0, 0], 
+            y=[f['z_bottom'], f['z_bottom'], f['z_top'], f['z_top'], f['z_bottom']],
+            fill="toself", 
+            name=f"ชั้น {f['floor_num']}",
+            text=f"<b>ชั้น {f['floor_num']}</b><br>ขอบเขตระดับสูง: {f['z_bottom']:.1f} ถึง {f['z_top']:.1f} ม.<br>ความยาวผนัง L: {L} ม.<br>พื้นที่รับลม: {f['trib_area']:.1f} m²",
+            hoverinfo="text"
+        ))
+        # ใส่ป้ายข้อความแสดงพื้นที่ตรงกลางแผงชั้น
+        fig.add_annotation(x=L/2, y=f['z_mid'], text=f"<b>Area = {f['trib_area']:.1f} m²</b><br>(กว้าง {L}ม. × สูง {f['height']}ม.)", showarrow=False, font=dict(color="white", size=11))
 
-    # วาดลูกศรทิศทางแรงยกหลังคา (Flat Roof Uplift Suction)
-    val_r = p_roof_ext if view_mode == "External" else (net_roof_case1 if view_mode == "Case 1" else net_roof_case2)
-    fig.add_annotation(x=B/2, y=H_total + 1.5, ax=B/2, ay=H_total, xref="x", yref="y", axref="x", ayref="y",
-                       text=f"<b>Roof Net: {val_r:.1f} kgf/m²</b>", showarrow=True, arrowhead=2, arrowcolor="#EF4444", font=dict(color="#EF4444", size=10))
-
-    title_text = "แรงลมภายนอก (External Pressure)" if view_mode == "External" else f"แรงลมสุทธิ & โหลดรายชั้น {view_mode} (Net Pressure + Story Force)"
-    fig.update_layout(
-        title=dict(text=f"<b>แผนภาพอาคาร: {title_text}</b>", font=dict(size=14, color="#1E3A8A"), x=0.5),
-        xaxis_title="ความกว้างอาคาร B (เมตร)", yaxis_title="ความสูง z (เมตร)", 
-        yaxis_range=[-1, H_total + 3], xaxis_range=[-7, B + 7], height=500, margin=dict(l=20, r=20, t=40, b=20),
-        plot_bgcolor="white", showlegend=False
-    )
-    fig.update_xaxes(showgrid=True, gridcolor='#E5E7EB')
-    fig.update_yaxes(showgrid=True, gridcolor='#E5E7EB')
+    fig.update_layout(title="<b>2. แผนภาพขอบเขตพื้นที่รับลมหน้าตรง (Front Elevation - Tributary Area)</b>", xaxis_title="ความยาวอาคารตั้งฉากลม L (ม.)", yaxis_title="ระดับความสูง z (ม.)", height=400, plot_bgcolor="white")
     return fig
 
 # ==========================================
 # TABS NAVIGATION
 # ==========================================
-tab1, tab2, tab3 = st.tabs(["📊 แดชบอร์ด & โมเดลจำลอง", "📑 เล่มรายการคำนวณอย่างละเอียด", "💾 ตารางโหลด ETABS/SAP2000 (Design Output)"])
+tab1, tab2, tab3 = st.tabs(["📊 แดชบอร์ด & การกระจายพื้นที่แรงลม", "⚖️ ตรวจสอบ Base Shear (Wind vs EQ)", "📑 รายการคำนวณ"])
 
 # ------------------------------------------
-# TAB 1: Dashboard
+# TAB 1: Area & Pressure Distribution
 # ------------------------------------------
 with tab1:
-    st.markdown("#### 🎯 สรุปผลลัพธ์หลักหลักโครงสร้าง")
-    m_col1, m_col2, m_col3, m_col4 = st.columns(4)
-    with m_col1: st.metric("ความสูงรวม (H)", f"{H_total:.2f} m")
-    with m_col2: st.metric("แรงลมอ้างอิงพื้นฐาน (q)", f"{q:.2f} kgf/m²")
-    with m_col3: st.metric("แรงลัพธ์ Story Force สูงสุด", f"{max([f['f_story_kn_c1'] for f in floors_data]):.1f} kN")
-    with m_col4: st.metric("แรงยกสุทธิที่หลังคา (Roof)", f"{abs(net_roof_case1):.1f} kgf/m²")
-
-    st.markdown("---")
-    view_option = st.radio("เลือกกรณีโหลด (Load Case) เพื่อดูแผนภาพและพิกัดลูกศร:", 
-                           ["External", "Case 1", "Case 2"], 
-                           captions=["แรงลมภายนอก", "แรงลมสุทธิ + แรงดูดภายในอาคาร (-)", "แรงลมสุทธิ + แรงดันภายในอาคาร (+)"], horizontal=True)
+    st.markdown("#### 📐 การกระจายแรงดันแผ่ ($kgf/m^2$) ลงบนพื้นที่โครงสร้าง ($m^2$)")
+    st.info("💡 **อธิบายทางวิศวกรรม:** หน่วย `kgf/m²` คือ แรงดันลมที่กดลงบนฝาบ้านทุกๆ 1 ตารางเมตร โปรแกรมจะแปลงเป็นแรงลัพธ์แบบจุด (`kN`) ของชั้นนั้นๆ โดยการนำไปคูณกับ **'พื้นที่รับลมหน้าตรง (Tributary Area)'** ซึ่งมีขอบเขตตั้งแต่ระดับกึ่งกลางชั้นล่างถึงกึ่งกลางชั้นบน ยาวตลอดแนวอาคารด้านรับลม ดังแสดงในรูปภาพด้านขวา")
     
-    st.plotly_chart(plot_building_wind(floors_data, view_option), use_container_width=True)
+    view_option = st.radio("เลือกกรณีโหลดเพื่อดูแผนภาพแรงดัน:", ["External", "Case 1", "Case 2"], horizontal=True)
+    
+    g_col1, g_col2 = st.columns(2)
+    with g_col1:
+        st.plotly_chart(plot_cross_section(floors_data, view_option), use_container_width=True)
+    with g_col2:
+        st.plotly_chart(plot_front_elevation(floors_data, L), use_container_width=True)
 
 # ------------------------------------------
-# TAB 2: Calculation Report
+# TAB 2: Base Shear Comparison
 # ------------------------------------------
 with tab2:
-    st.markdown("#### 📑 เล่มรายการคำนวณโครงสร้างอย่างเป็นสเต็ป (ส่งตรวจอนุมัติ)")
-    st.markdown(f"""
-    ### **[ส่วนที่ 1 - 3]: สเปกเริ่มต้นระบบ**
-    * พื้นที่ทดสอบ: ความเร็วลมออกแบบอ้างอิง $V$ = `{V_input}` m/s $\\rightarrow$ $q$ = **`{q:.4f}` kgf/m²**
-    * ตัวคูณประกอบและสสัมประสิทธิ์: $I_w$ = `{Iw_input}`, $C_g$ = `{Cg_input}`, $GC_{{pi}}$ = `±{GCpi:.2f}`
-    * สัมประสิทธิ์รูปทรง $C_p$: Windward = `{Cp_w}`, Leeward = `{Cp_l}`, Sidewall = `{Cp_s}`, Flat Roof = `{Cp_r}`
+    st.markdown("#### ⚖️ การเปรียบเทียบแรงเฉือนที่ฐานอาคารรวม (Total Base Shear Comparison)")
     
-    ---
-    ### **[ส่วนที่ 4]: แรงลมแปรผันตามแนวความสูง**
-    """)
-    for f in floors_data:
-        st.markdown(f"- **ชั้น {f['floor_num']} ($z = {f['z_mid']:.2f}$ ม.):** $C_e = {f['Ce']:.3f}$ $\\rightarrow$ $p_{{windward}} =$ `{f['p_windward']:.2f}` kgf/m² | $p_{{sidewall}} =$ `{f['p_sidewall_ext']:.2f}` kgf/m²")
-
-    st.markdown(f"""
-    ---
-    ### **[ส่วนที่ 5]: โหลดควบคุมบริเวณหลังคาและผนังตามลม (คงที่ตลอดระดับความสูง)**
-    * $C_e$ ที่ยอดอาคาร ($H = {H_total:.2f}$ ม.) = `{Ce_H:.3f}` $\\rightarrow$ $q_h = {qh:.2f}$ kgf/m²
-    * **แรงลมภายนอกฝั่งตามลม (Leeward):** $p_l = {Iw_input} \\cdot {qh:.2f} \\cdot {Cg_input} \\cdot ({Cp_l}) =$ **`{p_leeward:.2f}` kgf/m²**
-    * **แรงลมภายนอกบริเวณหลังคา (Roof Uplift):** $p_{{roof}} = {Iw_input} \\cdot {qh:.2f} \\cdot {Cg_input} \\cdot ({Cp_r}) =$ **`{p_roof_ext:.2f}` kgf/m²**
-    * **แรงดันลมภายใน:** $p_{{int+}} =$ `{p_internal_pos:.2f}` kgf/m² | $p_{{int-}} =$ `{p_internal_neg:.2f}` kgf/m²
-    """)
+    # ตรวจสอบว่าแรงไหนชนะ
+    governing_force = "WIND LOAD (แรงลม)" if V_wind_max > V_EQ_input else "EARTHQUAKE LOAD (แรงแผ่นดินไหว)"
+    color_box = "#FEE2E2" if V_wind_max > V_EQ_input else "#E0F2FE"
+    border_color = "#EF4444" if V_wind_max > V_EQ_input else "#0284C7"
     
-    st.markdown("---")
-    st.markdown("### **[ส่วนที่ 6]: รายการคำนวณแรงสุทธิ (Net Pressure) และ แรงลัพธ์รวมรายชั้น (Story Force)**")
-    st.markdown("สมการแรงรวมรายชั้น: $$F_{{story}} = (p_{{net, windward}} + |p_{{net, leeward}}|) \\times L \\times h_{{floor}}$$")
+    # วาดกราฟแท่งเปรียบเทียบ
+    fig_bar = go.Figure()
+    fig_bar.add_trace(go.Bar(
+        x=["Wind Load (Case 1)", "Wind Load (Case 2)", "Earthquake (V_EQ)"],
+        y=[V_wind_case1, V_wind_case2, V_EQ_input],
+        marker_color=["#3B82F6", "#1D4ED8", "#EF4444"],
+        text=[f"{V_wind_case1:.2f} kN", f"{V_wind_case2:.2f} kN", f"{V_EQ_input:.2f} kN"],
+        textposition='auto'
+    ))
+    fig_bar.update_layout(title="<b>กราฟเปรียบเทียบแรงรวมที่ฐานอาคาร (Base Shear) หน่วย: kN</b>", yaxis_title="Base Shear (kN)", height=350, plot_bgcolor="white")
     
-    for f in floors_data:
-        with st.expander(f"🧮 รายละเอียดสูตรและการคำนวณของ: ชั้นที่ {f['floor_num']}", expanded=False):
-            st.markdown(f"""
-            **กรณีที่ 1: ผสมแรงดูดภายในอาคาร ($p_{{int-}} = {p_internal_neg:.2f}$ kgf/m²)**
-            * $p_{{net, windward}}$ = ${f['p_windward']:.2f} - ({p_internal_neg:.2f}) =$ **`{f['net_w_case1']:.2f}` kgf/m²**
-            * $p_{{net, leeward}}$ = ${p_leeward:.2f} - ({p_internal_neg:.2f}) =$ **`{net_l_case1:.2f}` kgf/m²**
-            * $p_{{net, sidewall}}$ = ${f['p_sidewall_ext']:.2f} - ({p_internal_neg:.2f}) =$ **`{f['net_s_case1']:.2f}` kgf/m²**
-            * **ถอดสมการหาแรงรวม Point Load (Case 1):**
-              $$F = ({f['net_w_case1']:.2f} + |{net_l_case1:.2f}|) \\times {L} \\times {f['height']}$$
-              $$F = {f['net_w_case1'] + abs(net_l_case1):.2f} \\times {L * f['height']:.2f} = { (f['net_w_case1'] + abs(net_l_case1)) * L * f['height'] :.2f} \\text{{ kgf}}$$
-              $$\\mathbf{{F_{{story, Case1}} = {f['f_story_kn_c1']:.2f} \\text{{ kN}}}}$$
-            
-            **กรณีที่ 2: ผสมแรงดันภายในอาคาร ($p_{{int+}} = {p_internal_pos:.2f}$ kgf/m²)**
-            * $p_{{net, windward}}$ = ${f['p_windward']:.2f} - ({p_internal_pos:.2f}) =$ **`{f['net_w_case2']:.2f}` kgf/m²**
-            * $p_{{net, leeward}}$ = ${p_leeward:.2f} - ({p_internal_pos:.2f}) =$ **`{net_l_case2:.2f}` kgf/m²**
-            * $p_{{net, sidewall}}$ = ${f['p_sidewall_ext']:.2f} - ({p_internal_pos:.2f}) =$ **`{f['net_s_case2']:.2f}` kgf/m²**
-            * **ถอดสมการหาแรงรวม Point Load (Case 2):**
-              $$\\mathbf{{F_{{story, Case2}} = {f['f_story_kn_c2']:.2f} \\text{{ kN}}}}$$
-            """)
+    b_col1, b_col2 = st.columns([3, 2])
+    with b_col1:
+        st.plotly_chart(fig_bar, use_container_width=True)
+    with b_col2:
+        st.markdown(f"""
+        <div class="verdict-box" style="background-color: {color_box}; border-left: 6px solid {border_color};">
+            📋 ผลลัพธ์การตรวจสอบระบบแรงด้านข้าง:<br>
+            <span style="font-size: 1.3rem; color: {border_color};">{governing_force} เป็นตัวควบคุมหลัก!</span>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown(f"""
+        **💡 บันทึกข้อเสนอแนะสำหรับการออกแบบโครงสร้าง:**
+        * **แรงลัพธ์รวมจากลมสูงสุด ($V_{{Wind}}$):** `{V_wind_max:.2f}` kN
+        * **แรงลัพธ์จากแผ่นดินไหว ($V_{{EQ}}$):** `{V_EQ_input:.2f}` kN
+        * อัตราส่วนระบบแรง $V_{{Wind}} / V_{{EQ}}$ = **`{V_wind_max / (V_EQ_input if V_EQ_input > 0 else 1):.2f}`** เท่า
+        """)
+        if V_wind_max > V_EQ_input:
+            st.success("🎯 **คำแนะนำ:** สำหรับอาคารนี้ โครงสร้างรับแรงด้านข้าง (เช่น เสา, คาน, ระบบค้ำยัน) ควรออกแบบโดยอ้างอิงแรงลมเป็นหลัก เนื่องจากมีค่ามากกว่าแรงแผ่นดินไหว")
+        else:
+            st.warning("🎯 **คำแนะนำ:** แรงแผ่นดินไหวมีค่าสูงกว่า! โครงสร้างหลัก (รวมถึงเสาตอม่อและระบบฐานราก) จะต้องได้รับการตรวจสอบรายละเอียดความเหนียวและการดัดงอตามมาตรฐานการต้านทานแผ่นดินไหว")
 
 # ------------------------------------------
-# TAB 3: Design Output & Export
+# TAB 3: Report & Outputs
 # ------------------------------------------
 with tab3:
-    st.markdown("#### 💾 ตารางสรุปหน่วยแรงลมและการแปลงเป็น Point Load สำหรับคีย์เข้าโปรแกรมออกแบบโครงสร้าง")
-    st.markdown("วิศวกรสามารถเลือก Copy คอลัมน์ **Story Force (kN)** ไปใส่ในตาราง Diaphragm หรือ Center of Mass ในโปรแกรม ETABS/SAP2000 ได้ทันที")
+    st.markdown("#### 📑 ตารางสรุปหน่วยแรง, พื้นที่ และแรงลัพธ์รายชั้นประจำจุดโครงสร้าง")
     
     summary_rows = []
     for f in floors_data:
         summary_rows.append({
             "Story": f"Floor {f['floor_num']}",
+            "ขอบเขตพื้นที่ความสูง (ม.)": f"{f['z_bottom']:.1f} ถึง {f['z_top']:.1f}",
+            "พื้นที่รับลม Trib Area (m²)": round(f['trib_area'], 1),
             "Net Windward C1 (kgf/m²)": round(f['net_w_case1'], 1),
             "Net Leeward C1 (kgf/m²)": round(net_l_case1, 1),
-            "Net Sidewall C1 (kgf/m²)": round(f['net_s_case1'], 1),
             "🔥 Story Force C1 (kN)": round(f['f_story_kn_c1'], 2),
             "Net Windward C2 (kgf/m²)": round(f['net_w_case2'], 1),
             "Net Leeward C2 (kgf/m²)": round(net_l_case2, 1),
-            "Net Sidewall C2 (kgf/m²)": round(f['net_s_case2'], 1),
-            "🔥 Story Force C2 (kN)": round(f['f_story_kn_c2'], 2),
+            "🔥 Story Force C2 (kN)": round(f['f_story_kn_c2'], 2)
         })
-        
     df_summary = pd.DataFrame(summary_rows)
     st.dataframe(df_summary, use_container_width=True, hide_index=True)
     
-    # แสดงแรงลมหลังคาด้านบนสุด
     st.markdown(f"""
-    <div style="background-color: #FFFBEB; padding: 15px; border-radius: 8px; border-left: 5px solid #F59E0B;">
-    <strong>🏠 ข้อกำหนดโหลดแรงดันสุทธิที่บริเวณหลังคา (Roof Net Pressure):</strong><br>
-    - <strong>Case 1 (+Internal Suction):</strong> <code>{net_roof_case1:.2f} kgf/m²</code> (แรงยกตัวขึ้นกระทำต่อแปและระบบแผ่นหลังคา)<br>
-    - <strong>Case 2 (+Internal Pressure):</strong> <code>{net_roof_case2:.2f} kgf/m²</code> (แรงยกสุทธิสูงสุด วิกฤตที่สุดสำหรับออกแบบจุดยึดหลังคาเหล็ก)
-    </div>
-    """, unsafe_allow_html=True)
-    
-    csv_data = df_summary.to_csv(index=False).encode('utf-8-sig')
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.download_button(label="📥 ดาวน์โหลดตารางโหลดแยกรายชั้น (.csv)", data=csv_data, file_name="WindLoad_Pro_Output.csv", mime="text/csv")
+    ---
+    ### **📊 สมการถอดตัวเลขให้เห็นที่มาของหน่วย:**
+    ยกตัวอย่าง **ชั้นที่ 1:**
+    * หน่วยแรงดันกระทำแผ่ฝั่งรับลม ($p_{{net, w}}$) = `{floors_data[0]['net_w_case1']:.2f}` $kgf/m^2$
+    * หน่วยแรงดันกระทำแผ่ฝั่งตามลม ($p_{{net, l}}$) = `{net_l_case1:.2f}` $kgf/m^2$ *(แรงดูด)*
+    * พื้นที่รับลมแผ่หน้าตรงของชั้นนี้ ($A_{{trib}}$) = ความยาวอาคาร $L$ (`{L}` ม.) $\\times$ ความสูงชั้น (`{floors_data[0]['height']}` ม.) = **`{floors_data[0]['trib_area']:.1f}` $m^2$**
+    * **สมการแปลงค่า:** $F_{{story}} = (p_{{net, w}} + |p_{{net, l}}|) \\times A_{{trib}} \\times 0.00980665$
+    * แทนค่า: $F_{{story}} = ({floors_data[0]['net_w_case1']:.2f} + {abs(net_l_case1):.2f}) \\times {floors_data[0]['trib_area']:.1f} \\times 0.00980665$ = **`{floors_data[0]['f_story_kn_c1']:.2f}` kN**
+    """)
