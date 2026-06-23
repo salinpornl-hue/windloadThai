@@ -183,23 +183,23 @@ with tab1:
         # เส้นแสดงระดับความสูงแต่ละชั้น
         fig.add_shape(type="line", x0=0, y0=f['z_top'], x1=B, y1=f['z_top'],
                       line=dict(color="rgba(75, 85, 99, 0.3)", width=1.5, dash="dash"))
-        # ข้อความบอกความสูงสะสม (ฝั่งขวาอาคาร)
-        fig.add_annotation(x=B + 0.3, y=f['z_top'], text=f"z = {f['z_top']:.2f} m", 
-                           showarrow=False, xanchor="left", font=dict(size=11, color="#2563EB", bold=True))
+        # ข้อความบอกความสูงสะสม (ฝั่งขวาอาคาร) - แก้ไขใช้ HTML <b> เพื่อตัวหนา
+        fig.add_annotation(x=B + 0.3, y=f['z_top'], text=f"<b>z = {f['z_top']:.2f} m</b>", 
+                           showarrow=False, xanchor="left", font=dict(size=11, color="#2563EB"))
         # ชื่อชั้นและความสูงของตัวชั้นเอง (กึ่งกลางโครงสร้าง)
         fig.add_annotation(x=B/2, y=f['z_mid'], text=f"ชั้นที่ {f['floor_num']} (h = {f['height']} ม.)", 
                            showarrow=False, font=dict(size=11, color="#4B5563", italic=True))
         
-        # วาดลูกศรหน่วยแรงลมด้านรับลม (Windward)
+        # วาดลูกศรหน่วยแรงลมด้านรับลม (Windward) - แก้ไขใช้ HTML <b> เพื่อตัวหนา
         arrow_len = 1.5 + (f['p_windward'] / 40.0) 
         fig.add_annotation(x=0, y=f['z_mid'], ax=-arrow_len, ay=f['z_mid'], xref="x", yref="y", axref="x", ayref="y",
-                           text=f"{f['p_windward']:.1f} kgf/m²", showarrow=True, arrowhead=2, arrowsize=1.2, arrowcolor="#DC2626",
-                           font=dict(color="#DC2626", size=10, bold=True), xanchor="right")
+                           text=f"<b>{f['p_windward']:.1f} kgf/m²</b>", showarrow=True, arrowhead=2, arrowsize=1.2, arrowcolor="#DC2626",
+                           font=dict(color="#DC2626", size=10), xanchor="right")
 
-    # วาดลูกศรแรงลมด้านตามลม (Leeward - มีค่าคงที่ตลอดความสูง อ้างอิงที่ยอดอาคาร)
+    # วาดลูกศรแรงลมด้านตามลม (Leeward) - แก้ไขใช้ HTML <b> เพื่อตัวหนา
     fig.add_annotation(x=B + 4.5, y=H_total/2, ax=B, ay=H_total/2, xref="x", yref="y", axref="x", ayref="y",
-                       text=f"Leeward Suction<br>{p_leeward:.1f} kgf/m²<br>(คงที่ตลอดแนวความสูง)", showarrow=True, 
-                       arrowhead=2, arrowsize=1.2, arrowcolor="#EA580C", font=dict(color="#EA580C", size=11, bold=True))
+                       text=f"<b>Leeward Suction<br>{p_leeward:.1f} kgf/m²<br>(คงที่ตลอดแนวความสูง)</b>", showarrow=True, 
+                       arrowhead=2, arrowsize=1.2, arrowcolor="#EA580C", font=dict(color="#EA580C", size=11))
 
     fig.update_layout(
         xaxis_title="ความกว้างของอาคารแนวขนานลม B (เมตร)", 
@@ -260,9 +260,9 @@ with tab2:
     *(หมายเหตุ: ค่าสัมประสิทธิ์ประกอบการเปิดโล่ง $C_e$ จะเปลี่ยนไปตามความสูงกึ่งกลางจริงของชั้นนั้นๆ)*
     """)
     
-    # แสดงการแทนค่ารายชั้นในลักษณะ Expanders แต่ละชั้นแยกขาดออกจากกันชัดเจน
+    # แสดงการแทนค่ารายชั้น แก้ไขใช้ st.expander ที่ถูกต้องตามหลัก Streamlit
     for f in floors_data:
-        with st.expanders(f"🔍 การสับเปลี่ยนตัวเลขและสูตรคำนวณของ: ชั้นที่ {f['floor_num']}"):
+        with st.expander(f"🔍 การสับเปลี่ยนตัวเลขและสูตรคำนวณของ: ชั้นที่ {f['floor_num']}", expanded=True):
             st.markdown(f"""
             * **ช่วงพิกัดระดับชั้น:** ตั้งแต่ระดับระดับดินสะสม `+{f['z_bottom']:.2f}` ม. ถึง `+{f['z_top']:.2f}` ม.
             * **ระดับความสูงอ้างอิงกึ่งกลางชั้นเพื่อหาแรงลม ($z_{{mid}}$):** $$z_{{mid}} = \\frac{{{f['z_bottom']:.2f} + {f['z_top']:.2f}}}{{2}} = {f['z_mid']:.2f} \\text{{ เมตร}}$$
@@ -323,7 +323,7 @@ with tab3:
     # แสดงผลตารางแบบสะอาดตา
     st.dataframe(df_summary, use_container_width=True, hide_index=True)
     
-    # เพิ่ม Feature ดาวน์โหลดตารางเป็น CSV เพื่อนำไปเปิดใน Microsoft Excel (สไตล์โปรแกรมวิศวกรรมระดับสูง)
+    # ฟังก์ชันดาวน์โหลดตารางเป็น CSV เพื่อนำไปเปิดใน Microsoft Excel
     csv_data = df_summary.to_csv(index=False).encode('utf-8-sig')
     st.download_button(
         label="📥 ดาวน์โหลดตารางสรุปโหลดนี้เป็นไฟล์สำหรับ Excel (.csv)",
