@@ -183,20 +183,22 @@ with tab1:
         # เส้นแสดงระดับความสูงแต่ละชั้น
         fig.add_shape(type="line", x0=0, y0=f['z_top'], x1=B, y1=f['z_top'],
                       line=dict(color="rgba(75, 85, 99, 0.3)", width=1.5, dash="dash"))
-        # ข้อความบอกความสูงสะสม (ฝั่งขวาอาคาร) - แก้ไขใช้ HTML <b> เพื่อตัวหนา
+        
+        # ข้อความบอกความสูงสะสม (ฝั่งขวาอาคาร) - ใช้ HTML <b> เพื่อตัวหนา
         fig.add_annotation(x=B + 0.3, y=f['z_top'], text=f"<b>z = {f['z_top']:.2f} m</b>", 
                            showarrow=False, xanchor="left", font=dict(size=11, color="#2563EB"))
-        # ชื่อชั้นและความสูงของตัวชั้นเอง (กึ่งกลางโครงสร้าง)
-        fig.add_annotation(x=B/2, y=f['z_mid'], text=f"ชั้นที่ {f['floor_num']} (h = {f['height']} ม.)", 
-                           showarrow=False, font=dict(size=11, color="#4B5563", italic=True))
         
-        # วาดลูกศรหน่วยแรงลมด้านรับลม (Windward) - แก้ไขใช้ HTML <b> เพื่อตัวหนา
+        # ชื่อชั้นและความสูงของตัวชั้นเอง (กึ่งกลางโครงสร้าง) - แก้ไขเอา italic ออกจาก font เปลี่ยนมาใช้ HTML <i> แทนที่นี่เรียบร้อยครับ!
+        fig.add_annotation(x=B/2, y=f['z_mid'], text=f"<i>ชั้นที่ {f['floor_num']} (h = {f['height']} ม.)</i>", 
+                           showarrow=False, font=dict(size=11, color="#4B5563"))
+        
+        # วาดลูกศรหน่วยแรงลมด้านรับลม (Windward) - ใช้ HTML <b> เพื่อตัวหนา
         arrow_len = 1.5 + (f['p_windward'] / 40.0) 
         fig.add_annotation(x=0, y=f['z_mid'], ax=-arrow_len, ay=f['z_mid'], xref="x", yref="y", axref="x", ayref="y",
                            text=f"<b>{f['p_windward']:.1f} kgf/m²</b>", showarrow=True, arrowhead=2, arrowsize=1.2, arrowcolor="#DC2626",
                            font=dict(color="#DC2626", size=10), xanchor="right")
 
-    # วาดลูกศรแรงลมด้านตามลม (Leeward) - แก้ไขใช้ HTML <b> เพื่อตัวหนา
+    # วาดลูกศรแรงลมด้านตามลม (Leeward) - ใช้ HTML <b> เพื่อตัวหนา
     fig.add_annotation(x=B + 4.5, y=H_total/2, ax=B, ay=H_total/2, xref="x", yref="y", axref="x", ayref="y",
                        text=f"<b>Leeward Suction<br>{p_leeward:.1f} kgf/m²<br>(คงที่ตลอดแนวความสูง)</b>", showarrow=True, 
                        arrowhead=2, arrowsize=1.2, arrowcolor="#EA580C", font=dict(color="#EA580C", size=11))
@@ -260,7 +262,7 @@ with tab2:
     *(หมายเหตุ: ค่าสัมประสิทธิ์ประกอบการเปิดโล่ง $C_e$ จะเปลี่ยนไปตามความสูงกึ่งกลางจริงของชั้นนั้นๆ)*
     """)
     
-    # แสดงการแทนค่ารายชั้น แก้ไขใช้ st.expander ที่ถูกต้องตามหลัก Streamlit
+    # แสดงการแทนค่ารายชั้น ใช้ st.expander ที่ถูกต้องและเปิดแสดงผลพร้อมกัน
     for f in floors_data:
         with st.expander(f"🔍 การสับเปลี่ยนตัวเลขและสูตรคำนวณของ: ชั้นที่ {f['floor_num']}", expanded=True):
             st.markdown(f"""
