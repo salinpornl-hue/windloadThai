@@ -1,117 +1,146 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import plotly.graph_objects as go
 
 # ==========================================
-# ฟังก์ชันคำนวณตามมาตรฐาน
+# Core Logic & Math
 # ==========================================
-def calculate_velocity_pressure(V):
-    """คำนวณหน่วยแรงลมอ้างอิง (q) ในหน่วย kgf/m^2"""
-    rho = 1.25 # kg/m^3
-    return (0.5 * rho * (V ** 2)) / 9.80665
+def calculate_q(V):
+    """คำนวณหน่วยแรงลมอ้างอิง q = 0.5 * rho * V^2"""
+    rho = 1.25 # ความหนาแน่นอากาศ
+    q_pa = 0.5 * rho * (V ** 2)
+    return q_pa / 9.80665 # แปลงเป็น kgf/m^2
 
 def get_Ce(z, exposure):
-    """
-    ประมาณค่าประกอบการเปิดโล่ง (Ce) ตามความสูงและสภาพภูมิประเทศ
-    (หมายเหตุ: ใช้สมการจำลองเพื่อการแสดงผล ควรปรับจูนตามตาราง มยผ. 1311-50 อีกครั้ง)
-    """
-    z = max(z, 6.0) # มักจะคงที่ที่ความสูงต่ำกว่า 6-10 เมตร
-    if exposure == 'A (โล่ง/ชายฝั่ง)':
-        return min(max((z / 10.0) ** 0.20, 0.9), 1.5)
-    elif exposure == 'B (ชานเมือง)':
-        return min(max((z / 10.0) ** 0.28, 0.7), 1.2)
-    else: # C (เมือง/ตึกสูงหนาแน่น)
-        return min(max((z / 10.0) ** 0.40, 0.5), 1.0)
+    """คำนวณ Ce อิงตาม Power Law"""
+    z = max(z, 6.0)
+    if 'A' in exposure: return min(max((z/10.0)**0.20, 0.9), 1.5)
+    elif 'B' in exposure: return min(max((z/10.0)**0.28, 0.7), 1.2)
+    else: return min(max((z/10.0)**0.40, 0.5), 1.0)
 
 # ==========================================
-# Streamlit UI
+# Streamlit UI Setup
 # ==========================================
 st.set_page_config(page_title="โปรแกรมคำนวณแรงลม มยผ. 1311-50", layout="wide")
-
-st.title("🌪️ โปรแกรมคำนวณหน่วยแรงลมออกแบบ (ขั้นสูง)")
-st.caption("อ้างอิงมาตรฐาน มยผ. 1311-50 สำหรับอาคารแข็งเกร็ง (Rigid Building)")
+st.title("🌪️ โปรแกรมคำนวณแรงลมออกแบบ (มยผ. 1311-50)")
 st.markdown("---")
 
-# แบ่งหน้าจอรับข้อมูลเป็น 3 คอลัมน์
+# --- รับค่าตัวแปร ---
 col1, col2, col3 = st.columns(3)
 
 with col1:
-    st.subheader("📍 1. ข้อมูลสถานที่")
-    zone_dict = {
-        "โซน 1 (25 m/s)": 25.0,
-        "โซน 2 (27 m/s)": 27.0,
-        "โซน 3 (29 m/s)": 29.0,
-        "โซน 4 (38 m/s) - พายุไต้ฝุ่น": 38.0
-    }
-    zone_select = st.selectbox("เลือกโซนความเร็วลมพื้นฐาน (V)", list(zone_dict.keys()))
-    V_input = zone_dict[zone_select]
-    
+    st.markdown("### 📍 1. ข้อมูลสถานที่")
+    V_input = st.number_input("ความเร็วลมพื้นฐาน V (m/s)", value=25.0, step=1.0)
     exposure = st.selectbox("สภาพภูมิประเทศ", ['A (โล่ง/ชายฝั่ง)', 'B (ชานเมือง)', 'C (เมือง/ตึกสูง)'])
+    Iw_input = st.selectbox("ค่าประกอบความสำคัญ (Iw)", [1.0, 1.15])
 
 with col2:
-    st.subheader("🏢 2. ข้อมูลอาคาร")
-    h_total = st.number_input("ความสูงรวมของอาคาร (m)", min_value=3.0, value=20.0, step=1.0)
-    step_z = st.number_input("ระยะห่างแต่ละชั้นที่ต้องการคำนวณ (m)", min_value=1.0, value=3.0, step=1.0)
-    
-    importance_dict = {"อาคารทั่วไป (1.0)": 1.0, "อาคารสำคัญ (1.15)": 1.15}
-    Iw_input = importance_dict[st.selectbox("ประเภทความสำคัญอาคาร (Iw)", list(importance_dict.keys()))]
+    st.markdown("### 🏢 2. มิติอาคาร")
+    B = st.number_input("ความกว้างอาคารด้านขนานลม B (m)", value=15.0)
+    L = st.number_input("ความยาวอาคารตั้งฉากลม L (m)", value=20.0)
+    H = st.number_input("ความสูงชายคา H (m)", value=12.0)
+    roof_angle = st.number_input("ความชันหลังคา (องศา)", value=15.0, help="0 = หลังคาแบน")
 
 with col3:
-    st.subheader("🌬️ 3. สัมประสิทธิ์ประกอบ")
-    Cg_input = st.number_input("ค่าประกอบลมกระโชก (Cg)", value=2.0, step=0.1, help="อาคารแข็งเกร็ง = 2.0")
-    Cp_windward = st.number_input("Cp ด้านรับลม (Windward)", value=0.8, step=0.1)
-    Cp_leeward = st.number_input("Cp ด้านตามลม (Leeward)", value=-0.5, step=0.1, help="ค่าเป็นลบหมายถึงแรงดูดออก")
+    st.markdown("### 🌬️ 3. สภาพแวดล้อมอาคาร")
+    enclosure = st.selectbox("ลักษณะการปิดล้อม", ["อาคารปิดทึบ (Enclosed)", "อาคารปิดล้อมบางส่วน (Partially Enclosed)"])
+    Cg_input = st.number_input("ค่าประกอบลมกระโชก (Cg)", value=2.0)
+    # สมมติค่า Cp เบื้องต้น (ในการใช้งานจริงต้องเปิดตาราง L/B)
+    Cp_w = st.number_input("Cp ผนังด้านรับลม (Windward)", value=0.8)
+    Cp_l = st.number_input("Cp ผนังด้านตามลม (Leeward)", value=-0.5)
+
+# ตั้งค่า GCpi ตามประเภทอาคาร
+GCpi = 0.55 if "Partially" in enclosure else 0.18
 
 st.markdown("---")
 
-# ==========================================
-# การคำนวณและสร้างตาราง
-# ==========================================
-if st.button("🚀 ประมวลผลการคำนวณ (Generate Profile)", use_container_width=True):
+if st.button("🚀 ประมวลผลและสร้างรายการคำนวณ", use_container_width=True):
     
-    q = calculate_velocity_pressure(V_input)
-    st.success(f"หน่วยแรงลมอ้างอิง (q) = **{q:.2f} kgf/m²**")
+    # คำนวณค่าพื้นฐาน
+    q = calculate_q(V_input)
+    Ce_H = get_Ce(H, exposure)
+    roof_height = (B/2) * np.tan(np.radians(roof_angle)) if roof_angle > 0 else 0
+    H_total = H + roof_height
     
-    # สร้าง List ของความสูง (z) ตั้งแต่ 0 ถึง h_total
-    heights = np.arange(0, h_total + step_z, step_z)
-    if heights[-1] != h_total: 
-        heights = np.append(heights, h_total) # เก็บเศษความสูงชั้นบนสุด
-        
-    results = []
+    # คำนวณแรงลมที่ความสูงหลังคา (สำหรับ Leeward และ Internal)
+    qh = q * Ce_H
     
-    for z in heights:
-        if z == 0: continue # ข้ามที่ระดับดิน
-        
-        Ce = get_Ce(z, exposure)
-        
-        # p = Iw * q * Ce * Cg * Cp
-        p_windward = Iw_input * q * Ce * Cg_input * Cp_windward
-        
-        # Leeward ปกติคิดที่ความสูงครึ่งหนึ่งของอาคาร หรือคงที่ตลอดความสูงตาม มยผ.
-        # ในที่นี้สมมติให้แปรผันตามความสูงเพื่อให้เห็นความแตกต่าง หรือจะใช้ Ce ที่ระดับ h คงที่ก็ได้
-        p_leeward = Iw_input * q * get_Ce(h_total, exposure) * Cg_input * Cp_leeward
-        
-        p_total = p_windward + abs(p_leeward) # รวมแรงเข้าและแรงดูดออก
-        
-        results.append({
-            "ความสูง z (m)": round(z, 2),
-            "Ce": round(Ce, 3),
-            "Windward (kgf/m²)": round(p_windward, 2),
-            "Leeward (kgf/m²)": round(p_leeward, 2),
-            "แรงลมรวมที่ต้องออกแบบ (kgf/m²)": round(p_total, 2)
-        })
-        
-    df = pd.DataFrame(results)
+    # คำนวณแรงลมอ้างอิงบนผนัง
+    p_windward = Iw_input * q * Ce_H * Cg_input * Cp_w
+    p_leeward = Iw_input * qh * Cg_input * Cp_l # ใช้ qh ที่ความสูงยอด
+    p_internal_pos = qh * GCpi
+    p_internal_neg = qh * (-GCpi)
     
-    # แสดงผล
-    res_col1, res_col2 = st.columns([1.5, 2])
+    # ----------------------------------------
+    # 1. แสดงรูปภาพประกอบอาคาร (Plotly)
+    # ----------------------------------------
+    st.subheader("📐 แผนภาพแรงลมจำลอง (Wind Pressure Schematic)")
     
-    with res_col1:
-        st.markdown("### 📊 ตารางหน่วยแรงลมออกแบบ")
-        st.dataframe(df, use_container_width=True, hide_index=True)
-        
-    with res_col2:
-        st.markdown("### 📈 กราฟการกระจายแรงลมตามความสูง (Wind Profile)")
-        # จัด Dataframe ให้เหมาะกับการทำ Line Chart
-        chart_df = df.set_index("ความสูง z (m)")[["Windward (kgf/m²)", "แรงลมรวมที่ต้องออกแบบ (kgf/m²)"]]
-        st.line_chart(chart_df)
+    fig = go.Figure()
+    # วาดรูปร่างอาคาร 2D
+    fig.add_trace(go.Scatter(
+        x=[0, B, B, B/2, 0, 0], 
+        y=[0, 0, H, H_total, H, 0], 
+        fill="toself", fillcolor="rgba(100, 150, 250, 0.2)",
+        line=dict(color="blue", width=2), name="อาคาร"
+    ))
+    
+    # วาดลูกศร Windward
+    fig.add_annotation(x=-2, y=H/2, ax=-6, ay=H/2, xref="x", yref="y", axref="x", ayref="y",
+                       text="Windward", showarrow=True, arrowhead=2, arrowsize=1.5, arrowcolor="red")
+    
+    # วาดลูกศร Leeward
+    fig.add_annotation(x=B+6, y=H/2, ax=B+2, ay=H/2, xref="x", yref="y", axref="x", ayref="y",
+                       text="Leeward", showarrow=True, arrowhead=2, arrowsize=1.5, arrowcolor="orange")
+    
+    # วาดลูกศร หลังคา
+    if roof_angle > 0:
+        fig.add_annotation(x=B/4, y=H+(roof_height/2)+2, ax=B/4, ay=H+(roof_height/2)+5, 
+                           text="Roof Wind", showarrow=True, arrowhead=2, arrowcolor="purple")
+                           
+    fig.update_layout(xaxis_title="ความกว้าง B (m)", yaxis_title="ความสูง (m)", 
+                      yaxis_range=[0, H_total+5], xaxis_range=[-10, B+10], height=400)
+    st.plotly_chart(fig, use_container_width=True)
+
+    # ----------------------------------------
+    # 2. รายการคำนวณ (Calculation Report)
+    # ----------------------------------------
+    st.subheader("📑 รายการคำนวณ (Calculation Report)")
+    
+    report = f"""
+    **โครงการ:** คำนวณหน่วยแรงลมออกแบบระบบโครงสร้างหลัก (MWFRS) ตาม มยผ. 1311-50
+    **ลักษณะอาคาร:** {enclosure}, รูปทรงสี่เหลี่ยม, กว้าง {B} ม., ยาว {L} ม., สูงถึงชายคา {H} ม., ความชันหลังคา {roof_angle}°
+    
+    **1. ตัวแปรพื้นฐานและการคำนวณหน่วยแรงลมอ้างอิง ($q$)**
+    * ความเร็วลมพื้นฐาน ($V$) = **{V_input} m/s**
+    * ความหนาแน่นอากาศ ($\rho$) = 1.25 $kg/m^3$
+    * $q = \\frac{{0.5 \cdot \rho \cdot V^2}}{{9.80665}}$ = **{q:.2f} $kgf/m^2$**
+    
+    **2. สัมประสิทธิ์ประกอบการออกแบบ**
+    * ค่าประกอบความสำคัญ ($I_w$) = **{Iw_input}**
+    * สภาพภูมิประเทศ = **{exposure}**
+    * ค่าประกอบการเปิดโล่งที่ยอดอาคาร ($C_e$) = **{Ce_H:.3f}** (คำนวณที่ความสูง {H} ม.)
+    * ค่าประกอบลมกระโชก ($C_g$) = **{Cg_input}**
+    * สัมประสิทธิ์แรงดันภายใน ($GC_{{pi}}$) = **$\pm${GCpi}**
+    
+    **3. การคำนวณหน่วยแรงลมภายนอก (External Wind Pressure: $p_{{ext}}$)**
+    *สมการ:* $p_{{ext}} = I_w \cdot q \cdot C_e \cdot C_g \cdot C_p$
+    * **ผนังด้านรับลม (Windward):**
+      $p_{{w}} = {Iw_input} \cdot {q:.2f} \cdot {Ce_H:.3f} \cdot {Cg_input} \cdot ({Cp_w})$ = **{p_windward:.2f} $kgf/m^2$**
+    * **ผนังด้านตามลม (Leeward):**
+      $p_{{l}} = {Iw_input} \cdot {q:.2f} \cdot {Ce_H:.3f} \cdot {Cg_input} \cdot ({Cp_l})$ = **{p_leeward:.2f} $kgf/m^2$** *(ค่าลบคือแรงดูดออก)*
+      
+    **4. การคำนวณหน่วยแรงลมภายใน (Internal Wind Pressure: $p_{{int}}$)**
+    *สมการ:* $p_{{int}} = q_h \cdot GC_{{pi}}$
+    * แรงดันบวก: $p_{{int+}} = {qh:.2f} \cdot {GCpi}$ = **{p_internal_pos:.2f} $kgf/m^2$**
+    * แรงดูดลบ: $p_{{int-}} = {qh:.2f} \cdot (-{GCpi})$ = **{p_internal_neg:.2f} $kgf/m^2$**
+    
+    **5. สรุปหน่วยแรงลมออกแบบสุทธิ (Net Design Pressure)**
+    *หน่วยแรงลมสุทธิ = $p_{{ext}} - p_{{int}}$ (ต้องพิจารณากรณีวิกฤตที่สุด)*
+    * **ผนังด้านรับลม สูงสุด (ดันเข้า):** {p_windward:.2f} - ({p_internal_neg:.2f}) = **{(p_windward - p_internal_neg):.2f} $kgf/m^2$**
+    * **ผนังด้านตามลม สูงสุด (ดูดออก):** {p_leeward:.2f} - ({p_internal_pos:.2f}) = **{(p_leeward - p_internal_pos):.2f} $kgf/m^2$**
+    """
+    
+    st.info("💡 รายการคำนวณนี้แสดงขั้นตอนอย่างเป็นระบบ คุณสามารถคัดลอก (Copy) ข้อความด้านล่างไปใส่ในเอกสารรายการคำนวณของคุณได้เลย")
+    st.markdown(report)
