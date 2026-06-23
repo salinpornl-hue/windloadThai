@@ -174,63 +174,71 @@ else:
 # ==========================================
 # PLOTLY FUNCTIONS (ระบบลูกศรอัจฉริยะ)
 # ==========================================
+
 def plot_cross_section(floors, mode, unit_display):
     fig = go.Figure()
+    # วาดรูปอาคาร
     fig.add_trace(go.Scatter(x=[0, B, B, 0, 0], y=[0, 0, H_total, H_total, 0], fill="toself", fillcolor="rgba(30,58,138,0.05)", line=dict(color="#1E3A8A", width=3), name="โครงสร้าง"))
     
     is_kn = "kN" in unit_display
     unit_lbl = "kN" if is_kn else "kgf/m²"
 
-    def draw_arrow(x_surf, y_pos, val, face):
-        # ล็อกสเกลลูกศรไม่ให้กราฟเพี้ยนหรือทะลุกรอบ
-        scale_factor = 50.0 if is_kn else 35.0
-        arr_len = max(1.5, min(3.5, 1.0 + abs(val) / scale_factor))
-        
-        # จัดพิกัดและทิศทางลูกศร (บวก=ดันเข้า, ลบ=ดูดออก)
-        if face == "windward":
-            if val >= 0: ax, ay, x, y, col, x_anc = -arr_len, y_pos, 0, y_pos, "#DC2626", "right"
-            else: ax, ay, x, y, col, x_anc = 0, y_pos, -arr_len, y_pos, "#9333EA", "left"
-        elif face == "leeward":
-            if val >= 0: ax, ay, x, y, col, x_anc = B+arr_len, y_pos, B, y_pos, "#DC2626", "left"
-            else: ax, ay, x, y, col, x_anc = B, y_pos, B+arr_len, y_pos, "#EA580C", "right"
-        elif face == "roof":
-            if val >= 0: ax, ay, x, y, col, x_anc = x_surf, H_total+arr_len, x_surf, H_total, "#DC2626", "center"
-            else: ax, ay, x, y, col, x_anc = x_surf, H_total, x_surf, H_total+arr_len, "#9333EA", "center"
-            
-        fig.add_annotation(x=x, y=y, ax=ax, ay=ay, xref="x", yref="y", axref="x", ayref="y",
-                           text=f"<b>{val:.1f} {unit_lbl}</b>", showarrow=True, arrowhead=2, arrowsize=1.2, arrowcolor=col, font=dict(color=col, size=13), xanchor=x_anc)
+    # ฟังก์ชันวาดย่อยที่กำหนดพิกัด หัว-หาง ลูกศรชัดเจน (แก้ปัญหาลูกศรเพี้ยน)
+    def draw_arrow(x_tail, y_tail, x_head, y_head, val, col, x_anc):
+        fig.add_annotation(
+            x=x_head, y=y_head, ax=x_tail, ay=y_tail,
+            xref="x", yref="y", axref="x", ayref="y",
+            text=f"<b>{val:.1f} {unit_lbl}</b>",
+            showarrow=True, arrowhead=2, arrowsize=1.2, arrowcolor=col,
+            font=dict(color=col, size=13), xanchor=x_anc
+        )
 
     for f in floors:
+        # วาดเส้นประแบ่งระดับชั้น
         fig.add_shape(type="line", x0=0, y0=f['z_top'], x1=B, y1=f['z_top'], line=dict(color="gray", width=1, dash="dash"))
         
         if not is_kn:
-            # โหมด kgf/m2 (แสดง Windward ตามแต่ละชั้น)
+            # โหมด kgf/m²: วาดแรงดันลมกระจาย (Windward) ตามปกติ
             val_w = f['p_w'] if mode == "External" else (f['net_w_c1'] if mode == "Case 1" else f['net_w_c2'])
-            draw_arrow(0, f['z_mid'], val_w, "windward")
+            arr_len = max(2.0, min(3.5, 1.0 + abs(val_w)/30.0))
+            if val_w >= 0: draw_arrow(-arr_len, f['z_mid'], 0, f['z_mid'], val_w, "#DC2626", "right") # แรงดันเข้า
+            else: draw_arrow(0, f['z_mid'], -arr_len, f['z_mid'], val_w, "#9333EA", "left") # แรงดูดออก
         else:
-            # โหมด kN (แสดง Point Load ทั้งฝั่ง Windward และ Leeward ตามแต่ละชั้น!)
-            val_w = f['force_w_ext'] if mode == "External" else (f['force_w_c1'] if mode == "Case 1" else f['force_w_c2'])
-            val_l = f['force_l_ext'] if mode == "External" else (f['force_l_c1'] if mode == "Case 1" else f['force_l_c2'])
-            draw_arrow(0, f['z_mid'], val_w, "windward")
-            draw_arrow(B, f['z_mid'], val_l, "leeward")
+            # โหมด kN: วาด "แรงลัพธ์ Point Load ประจำชั้น" ที่ z_mid (รวม Windward และ Leeward เป็นลูกศรเดียว!)
+            force_w = f['force_w_ext'] if mode == "External" else (f['force_w_c1'] if mode == "Case 1" else f['force_w_c2'])
+            force_l = f['force_l_ext'] if mode == "External" else (f['force_l_c1'] if mode == "Case 1" else f['force_l_c2'])
+            net_story_force = force_w - force_l # หักล้างกลายเป็น Story Force
+            
+            arr_len = max(3.0, min(6.0, 2.0 + abs(net_story_force)/40.0))
+            # วาดลูกศรชี้เข้าหาโครงสร้างฝั่งซ้าย (เสมือนเป็นแรงด้านข้างกระทำต่ออาคาร)
+            draw_arrow(-arr_len, f['z_mid'], 0, f['z_mid'], net_story_force, "#2563EB", "right")
             
         fig.add_annotation(x=B/2, y=f['z_mid'], text=f"ชั้น {f['floor']}", showarrow=False, font=dict(color="#4B5563"))
 
     # วาด Leeward และ Roof
     if not is_kn:
-        # โหมด kgf/m2: Leeward เป็นค่าคงที่ค่าเดียว วาดตรงกลางตึก
+        # โหมด kgf/m²: วาด Leeward ค่าเดียวตรงกลางอาคาร
         val_l = p_leeward if mode == "External" else (net_l_c1 if mode == "Case 1" else net_l_c2)
-        draw_arrow(B, H_total/2, val_l, "leeward")
+        arr_len = max(2.0, min(3.5, 1.0 + abs(val_l)/30.0))
+        if val_l >= 0: draw_arrow(B+arr_len, H_total/2, B, H_total/2, val_l, "#DC2626", "left")
+        else: draw_arrow(B, H_total/2, B+arr_len, H_total/2, val_l, "#EA580C", "right")
+        
+        # วาด Roof
         val_r = p_roof if mode == "External" else (net_r_c1 if mode == "Case 1" else net_r_c2)
-        draw_arrow(B/2, H_total, val_r, "roof")
+        arr_len_r = max(2.0, min(3.5, 1.0 + abs(val_r)/30.0))
+        if val_r >= 0: draw_arrow(B/2, H_total+arr_len_r, B/2, H_total, val_r, "#DC2626", "center")
+        else: draw_arrow(B/2, H_total, B/2, H_total+arr_len_r, val_r, "#9333EA", "center")
     else:
-        # โหมด kN: วาด Roof Point Load
+        # โหมด kN: หลังคาก็รวมเป็น Point Load จุดเดียวเช่นกัน (ดึงขึ้น)
         val_r = force_r_ext if mode == "External" else (force_r_c1 if mode == "Case 1" else force_r_c2)
-        draw_arrow(B/2, H_total, val_r, "roof")
+        arr_len_r = max(2.5, min(5.0, 1.5 + abs(val_r)/50.0))
+        if val_r >= 0: draw_arrow(B/2, H_total+arr_len_r, B/2, H_total, val_r, "#DC2626", "center")
+        else: draw_arrow(B/2, H_total, B/2, H_total+arr_len_r, val_r, "#9333EA", "center")
 
-    fig.update_layout(title=f"<b>1. แผนภาพหน้าตัดแรงดันลม (Cross Section) - โหมด {mode} ({unit_lbl})</b>", 
+    # ตั้งค่ากราฟให้มีระยะเผื่อลูกศร (Range) เพื่อให้สวยงาม ไม่เบี้ยว
+    fig.update_layout(title=f"<b>1. แผนภาพหน้าตัด (Cross Section) - โหมด {mode} ({unit_lbl})</b>", 
                       xaxis_title="ความกว้างอาคาร B (ม.)", yaxis_title="ความสูงอาคาร z (ม.)", 
-                      xaxis_range=[-8, B+8], yaxis_range=[-1, H_total+4], height=550, plot_bgcolor="white", margin=dict(t=40,b=20))
+                      xaxis_range=[-9, B+9], yaxis_range=[-1, H_total+5], height=550, plot_bgcolor="white", margin=dict(t=40,b=20))
     fig.update_xaxes(showgrid=True, gridcolor='#F3F4F6'); fig.update_yaxes(showgrid=True, gridcolor='#F3F4F6')
     return fig
 
