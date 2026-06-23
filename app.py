@@ -4,273 +4,229 @@ import numpy as np
 import plotly.graph_objects as go
 
 # ==========================================
-# ส่วนคำนวณหลักตามมาตรฐาน มยผ. 1311-50
+# Core Logic & Math
 # ==========================================
 def calculate_q(V):
-    """คำนวณหน่วยแรงลมอ้างอิง q = 0.5 * rho * V^2 (แปลงเป็น kgf/m²)"""
-    rho = 1.25 
+    """คำนวณหน่วยแรงลมอ้างอิง q = 0.5 * rho * V^2"""
+    rho = 1.25 # ความหนาแน่นอากาศ
     q_pa = 0.5 * rho * (V ** 2)
-    return q_pa / 9.80665 
+    return q_pa / 9.80665 # แปลงเป็น kgf/m^2
 
 def get_Ce(z, exposure):
-    """คำนวณค่าประกอบเนื่องจากสภาพภูมิประเทศ (Ce) ตามระดับความสูง"""
+    """คำนวณ Ce อิงตาม Power Law"""
     z_eff = max(z, 6.0) # มยผ. กำหนดให้คิดความสูงขั้นต่ำที่ 6 เมตร
-    if 'A' in exposure:
-        return min(max((z_eff/10.0)**0.20, 0.9), 1.5)
-    elif 'B' in exposure:
-        return min(max((z_eff/10.0)**0.28, 0.7), 1.2)
-    else:
-        return min(max((z_eff/10.0)**0.40, 0.5), 1.0)
+    if 'A' in exposure: return min(max((z_eff/10.0)**0.20, 0.9), 1.5)
+    elif 'B' in exposure: return min(max((z_eff/10.0)**0.28, 0.7), 1.2)
+    else: return min(max((z_eff/10.0)**0.40, 0.5), 1.0)
 
 # ==========================================
-# การตั้งค่าหน้าจอแสดงผล (Streamlit UI)
+# Streamlit UI Setup
 # ==========================================
-st.set_page_config(page_title="โปรแกรมคำนวณแรงลมและ Base Shear", layout="wide")
-st.title("🌪️ โปรแกรมวิเคราะห์แรงลมและแรงเฉือนฐานอาคารรายชั้น (มยผ. 1311-50)")
+st.set_page_config(page_title="โปรแกรมคำนวณแรงลม มยผ. 1311-50", layout="wide")
+st.title("🌪️ โปรแกรมคำนวณแรงลมและ Base Shear (มยผ. 1311-50)")
 st.markdown("---")
 
-# --- ส่วนรับค่าพารามิเตอร์อินพุต (จัดกลุ่มให้กรอกง่ายด้านบน) ---
-st.subheader("🚧 1. กำหนดค่าตัวแปรการออกแบบ (Design Inputs)")
-col_in1, col_in2, col_in3 = st.columns(3)
+# --- รับค่าตัวแปร ---
+col1, col2, col3 = st.columns(3)
 
-with col_in1:
-    st.markdown("**📍 ข้อมูลแรงลมและภูมิประเทศ**")
+with col1:
+    st.markdown("### 📍 1. ข้อมูลสถานที่")
     V_input = st.number_input("ความเร็วลมพื้นฐาน V (m/s)", value=25.0, step=1.0)
     exposure = st.selectbox("สภาพภูมิประเทศ", ['A (โล่ง/ชายฝั่ง)', 'B (ชานเมือง)', 'C (เมือง/ตึกสูง)'], index=1)
-    Iw_input = st.selectbox("ค่าประกอบความสำคัญ (Iw)", [1.0, 1.15], index=0)
+    Iw_input = st.selectbox("ค่าประกอบความสำคัญ (Iw)", [1.0, 1.15])
 
-with col_in2:
-    st.markdown("**🏢 มิติแปลนอาคาร**")
-    B = st.number_input("ความกว้างอาคารด้านขนานลม B (m)", value=15.0, step=1.0)
-    L = st.number_input("ความยาวอาคารตั้งฉากลม L (m)", value=20.0, step=1.0)
+with col2:
+    st.markdown("### 🏢 2. มิติอาคาร (หลังคาแบน)")
+    B = st.number_input("ความกว้างอาคารด้านขนานลม B (m)", value=15.0)
+    L = st.number_input("ความยาวอาคารตั้งฉากลม L (m)", value=20.0)
+    
+    # เพิ่มการรับค่าจำนวนชั้นและความสูงแต่ละชั้น
+    num_stories = st.number_input("จำนวนชั้นทั้งหมด", value=3, min_value=1, step=1)
+    st.markdown("**ความสูงแต่ละชั้น (m):**")
+    floor_cols = st.columns(min(num_stories, 4))
+    floor_heights = []
+    for i in range(num_stories):
+        with floor_cols[i % 4]:
+            h_val = st.number_input(f"ชั้น {i+1}", value=4.0 if i==0 else 3.5, min_value=1.0, key=f"h_{i}")
+            floor_heights.append(h_val)
+
+with col3:
+    st.markdown("### 🌬️ 3. สภาพแวดล้อมอาคาร")
     enclosure = st.selectbox("ลักษณะการปิดล้อม", ["อาคารปิดทึบ (Enclosed)", "อาคารปิดล้อมบางส่วน (Partially Enclosed)"])
+    Cg_input = st.number_input("ค่าประกอบลมกระโชก (Cg)", value=2.0)
+    Cp_w = st.number_input("Cp ผนังด้านรับลม (Windward)", value=0.8)
+    Cp_l = st.number_input("Cp ผนังด้านตามลม (Leeward)", value=-0.5)
+    Cp_r = st.number_input("Cp หลังคาแบน (Roof Uplift)", value=-0.7)
 
-with col_in3:
-    st.markdown("**📐 สัมประสิทธิ์แรงดันลม (Cp)**")
-    Cg_input = st.number_input("ค่าประกอบลมกระโชก (Cg)", value=2.0, step=0.1)
-    Cp_w = st.number_input("Cp ผนังด้านรับลม (Windward)", value=0.8, step=0.05)
-    Cp_l = st.number_input("Cp ผนังด้านตามลม (Leeward)", value=-0.5, step=0.05)
-    Cp_r = st.number_input("Cp หลังคา (Roof Uplift)", value=-0.7, step=0.05)
-
+# ตั้งค่า GCpi ตามประเภทอาคาร
 GCpi = 0.55 if "Partially" in enclosure else 0.18
 
-# --- ส่วนกำหนดจำนวนชั้นและความสูงรายชั้น ---
-st.markdown("---")
-st.subheader("🏢 2. ข้อมูลความสูงโครงสร้างรายชั้น (Multi-story Configuration)")
-num_stories = st.number_input("จำนวนชั้นของอาคารทั้งหมด", min_value=1, max_value=15, value=3, step=1)
-
-st.markdown("*ระบุความสูงช่วงชั้นโครงสร้างแยกแต่ละชั้น (เมตร):*")
-floor_cols = st.columns(num_stories)
-floor_heights = []
-for i in range(num_stories):
-    with floor_cols[i]:
-        default_h = 4.0 if i == 0 else 3.5
-        h_val = st.number_input(f"ความสูงชั้นที่ {i+1}", min_value=1.0, max_value=10.0, value=default_h, key=f"fh_{i}")
-        floor_heights.append(h_val)
-
-# ==========================================
-# ส่วนประมวลผลคำนวณเชิงวิศวกรรม
-# ==========================================
-q = calculate_q(V_input)
-H_total = sum(floor_heights)
-qh_max = q * get_Ce(H_total, exposure)
-
-# แรงลมภายนอกด้านตามลมและแรงดันภายในอาคาร (อ้างอิงความสูงยอดอาคาร qh ตามมาตรฐาน)
-p_leeward = Iw_input * qh_max * Cg_input * Cp_l
-p_roof = Iw_input * qh_max * Cg_input * Cp_r
-p_internal_pos = qh_max * GCpi
-p_internal_neg = qh_max * (-GCpi)
-
-# คำนวณขอบเขตและหน่วยแรงดันแยกรายชั้น
-z_current = 0.0
-story_data = []
-
-for i in range(num_stories):
-    h = floor_heights[i]
-    z_bottom = z_current
-    z_top = z_current + h
-    z_mid = (z_bottom + z_top) / 2.0  # ใช้ความสูงกึ่งกลางชั้นคิดค่า Ce
-    
-    Ce_i = get_Ce(z_mid, exposure)
-    p_windward_i = Iw_input * q * Ce_i * Cg_input * Cp_w
-    
-    # คำนวณหน่วยแรงดันสุทธิในกรณีวิกฤตที่สุด (ดันเข้า + ดูดออกภายนอก)
-    # หมายเหตุ: แรงดันภายใน (Internal Pressure) จะหักล้างกันเองเมื่อคิดแรงรวมทั้งอาคาร (Base Shear)
-    # แต่ต้องนำมาคิดแรงสุทธิเมื่อออกแบบชิ้นส่วนผนังรายชั้น
-    p_net_windward = p_windward_i - p_internal_neg
-    p_net_leeward = p_leeward - p_internal_pos
-    
-    # พื้นที่รับลมของชั้น (Tributary Area)
-    trib_area = L * h
-    
-    # แรงลมรวมที่กระทำในชั้นนี้ (หน่วย: kgf) -> คิดจากความต่างแรงดันภายนอก Windward และ Leeward
-    force_kgf = (p_windward_i - p_leeward) * trib_area
-    force_kn = (force_kgf * 9.80665) / 1000.0  # แปลง kgf เป็น kN
-    
-    story_data.append({
-        "story": i + 1,
-        "height": h,
-        "z_bottom": z_bottom,
-        "z_top": z_top,
-        "z_mid": z_mid,
-        "Ce": Ce_i,
-        "p_w": p_windward_i,
-        "p_net_w": p_net_windward,
-        "trib_area": trib_area,
-        "force_kn": force_kn
-    })
-    z_current = z_top
-
-# คำนวณแรงเฉือนฐานรากสุทธิรวม (Total Base Shear)
-total_base_shear_kn = sum([s['force_kn'] for s in story_data])
-
-# ==========================================
-# ส่วนแสดงผลลัพธ์เชิงกราฟิก (พล็อตเรียงบน-ล่างแบบเต็มหน้าจอ)
-# ==========================================
-st.markdown("---")
-st.subheader("📊 3. แผนภาพแสดงผลการวิเคราะห์แบบละเอียด (Visualizations)")
-
-# --- แผนภาพที่ 1: หน้าตัดหน่วยแรงลม (Cross Section) ขยายเต็มจอ ---
-st.markdown("#### **1. แผนภาพหน่วยแรงดันลมภายนอกบนหน้าตัดอาคาร (Cross Section View: kgf/m²)**")
-
-fig1 = go.Figure()
-# วาดกรอบอาคาร
-fig1.add_trace(go.Scatter(
-    x=[0, B, B, 0, 0], y=[0, 0, H_total, H_total, 0],
-    fill="toself", fillcolor="rgba(240, 244, 255, 0.6)",
-    line=dict(color="#1E3A8A", width=3.5), name="โครงสร้างอาคาร"
-))
-
-# วาดเส้นประแสดงระดับชั้นภายในตึก
-for s in story_data[:-1]:
-    fig1.add_shape(type="line", x0=0, y0=s['z_top'], x1=B, y1=s['z_top'],
-                   line=dict(color="gray", width=1.5, dash="dash"))
-
-# พล็อตลูกศรแรงดันลมรับลม (Windward Arrows) ของแต่ละชั้น
-for s in story_data:
-    arrow_x_start = -1.5 - (s['p_w'] / 20.0)  # ปรับสเกลความยาวลูกศรตามค่าแรง
-    fig1.add_annotation(
-        x=0, y=s['z_mid'], ax=arrow_x_start, ay=s['z_mid'],
-        xref="x", yref="y", axref="x", ayref="y",
-        text=f"<b>{s['p_w']:.1f}</b>", showarrow=True,
-        arrowhead=2, arrowsize=1.2, arrowcolor="red", font=dict(color="red", size=12)
-    )
-
-# พล็อตลูกศรแรงด้านตามลม (Leeward Arrow)
-fig1.add_annotation(
-    x=B, y=H_total/2, ax=B + 2.5, ay=H_total/2,
-    xref="x", yref="y", axref="x", ayref="y",
-    text=f"<b>Leeward: {p_leeward:.1f}</b>", showarrow=True,
-    arrowhead=2, arrowsize=1.2, arrowcolor="orange", font=dict(color="orange", size=12)
-)
-
-# พล็อตลูกศรแรงยกหลังคา (Roof Uplift Arrow)
-fig1.add_annotation(
-    x=B/2, y=H_total + 1.2, ax=B/2, ay=H_total,
-    xref="x", yref="y", axref="x", ayref="y",
-    text=f"<b>Roof Uplift: {p_roof:.1f} kgf/m²</b>", showarrow=True,
-    arrowhead=2, arrowsize=1.2, arrowcolor="purple", font=dict(color="purple", size=12)
-)
-
-fig1.update_layout(
-    xaxis_title="ความกว้างตึก B (ม.)", yaxis_title="ความสูงอาคาร z (ม.)",
-    xaxis_range=[-8, B+8], yaxis_range=[-1, H_total+3],
-    plot_bgcolor="white", height=500
-)
-fig1.update_xaxes(showgrid=True, gridcolor='#F3F4F6')
-fig1.update_yaxes(showgrid=True, gridcolor='#F3F4F6')
-st.plotly_chart(fig1, use_container_width=True)
-
 st.markdown("---")
 
-# --- แผนภาพที่ 2: ขอบเขตพื้นที่รับลมหน้าตรง (Elevation View) ขยายเต็มจอ ---
-st.markdown("#### **2. ขอบเขตพื้นที่รับลมหน้าตรงแยกรายชั้น (Elevation View - ด้านรับลม L)**")
+if st.button("🚀 ประมวลผลและสร้างรายการคำนวณ", use_container_width=True):
+    
+    # ----------------------------------------
+    # การคำนวณค่าทางวิศวกรรม
+    # ----------------------------------------
+    H_total = sum(floor_heights) # ความสูงตึกรวม
+    q = calculate_q(V_input)
+    Ce_H = get_Ce(H_total, exposure)
+    qh = q * Ce_H
+    
+    # คำนวณแรงลมที่ความสูงหลังคา (สำหรับ Leeward, Roof และ Internal จะคงที่อิงยอดอาคาร)
+    p_leeward = Iw_input * qh * Cg_input * Cp_l 
+    p_roof = Iw_input * qh * Cg_input * Cp_r
+    p_internal_pos = qh * GCpi
+    p_internal_neg = qh * (-GCpi)
+    
+    floors_data = []
+    z_cumulative = 0
+    total_base_shear_kn = 0
+    
+    # วนลูปคำนวณแรงลมรับลม (Windward) แยกรายชั้น
+    for i in range(num_stories):
+        h = floor_heights[i]
+        z_bottom = z_cumulative
+        z_top = z_cumulative + h
+        z_mid = (z_bottom + z_top) / 2.0
+        
+        Ce_mid = get_Ce(z_mid, exposure)
+        p_w = Iw_input * q * Ce_mid * Cg_input * Cp_w
+        
+        # พื้นที่รับลม (Tributary Area) ของชั้นนี้ = ความยาวอาคาร * ความสูงชั้น
+        trib_area = L * h
+        
+        # แรงรวมประจำชั้น (Story Force) 
+        # เอาแรงอัดเข้าด้านหน้า (p_w) ลบด้วย แรงดูดออกด้านหลัง (p_leeward) ซึ่งเป็นค่าติดลบ ลบเจอลบกลายเป็นบวกทิศทางเดียวกัน
+        story_force_kgf = (p_w - p_leeward) * trib_area 
+        story_force_kn = story_force_kgf * 0.00980665 # แปลง kgf เป็น kN
+        
+        total_base_shear_kn += story_force_kn
+        
+        floors_data.append({
+            "floor": i+1,
+            "h": h,
+            "z_bottom": z_bottom,
+            "z_top": z_top,
+            "z_mid": z_mid,
+            "Ce": Ce_mid,
+            "p_w": p_w,
+            "trib_area": trib_area,
+            "force_kn": story_force_kn
+        })
+        z_cumulative = z_top
 
-fig2 = go.Figure()
-colors = ["#3B82F6", "#60A5FA", "#93C5FD", "#BFDBFE"] # ไล่เฉดสีฟ้าแต่ละชั้น
-
-for idx, s in enumerate(story_data):
-    c_fill = colors[idx % len(colors)]
-    # วาดบล็อกสี่เหลี่ยมพื้นที่รับลมแต่ละชั้น
-    fig2.add_trace(go.Scatter(
-        x=[0, L, L, 0, 0], y=[s['z_bottom'], s['z_bottom'], s['z_top'], s['z_top'], s['z_bottom']],
-        fill="toself", fillcolor=c_fill, line=dict(color="#1D4ED8", width=1.5),
-        showlegend=False
+    # ----------------------------------------
+    # 1. แสดงรูปภาพประกอบอาคาร (Plotly) - จัดวางแนวตั้ง (กว้างเต็มจอ)
+    # ----------------------------------------
+    st.subheader("📐 1. แผนภาพหน่วยแรงดันลมบนหน้าตัดอาคาร (Cross Section View: kgf/m²)")
+    
+    fig1 = go.Figure()
+    # วาดรูปร่างอาคาร 2D (เต็มกรอบ)
+    fig1.add_trace(go.Scatter(
+        x=[0, B, B, 0, 0], 
+        y=[0, 0, H_total, H_total, 0], 
+        fill="toself", fillcolor="rgba(240, 248, 255, 0.8)",
+        line=dict(color="#1E3A8A", width=3), name="โครงสร้างอาคาร", showlegend=False
     ))
-    # ใส่ป้ายข้อความบอกข้อมูลพื้นที่กึ่งกลางบล็อก
-    fig2.add_annotation(
-        x=L/2, y=s['z_mid'],
-        text=f"<b>ชั้น {s['story']}: Area = {s['trib_area']:.1f} m²</b><br>(กว้าง {L}ม. × สูงช่วงชั้น {s['height']}ม.)",
-        showarrow=False, font=dict(color="#1E3A8A", size=12)
-    )
+    
+    # วาดเส้นแบ่งชั้นและลูกศร Windward
+    for f in floors_data:
+        fig1.add_shape(type="line", x0=0, y0=f['z_top'], x1=B, y1=f['z_top'], line=dict(color="gray", width=1.5, dash="dash"))
+        
+        # ลูกศร Windward (สีแดง) ปรับสเกลอัตโนมัติ
+        arrow_start = -2 - (f['p_w']/30.0)
+        fig1.add_annotation(x=0, y=f['z_mid'], ax=arrow_start, ay=f['z_mid'], xref="x", yref="y", axref="x", ayref="y",
+                            text=f"<b>{f['p_w']:.1f}</b>", showarrow=True, arrowhead=2, arrowsize=1.2, arrowcolor="#DC2626", font=dict(color="#DC2626", size=13))
+        
+        # ป้ายชื่อชั้นกลางตัวตึก
+        fig1.add_annotation(x=B/2, y=f['z_mid'], text=f"ชั้น {f['floor']} (h={f['h']}m)", showarrow=False, font=dict(color="#4B5563"))
 
-fig2.update_layout(
-    xaxis_title="ความยาวหน้าแผงผนังรับแรง L (ม.)", yaxis_title="ระดับความสูงของอาคาร z (ม.)",
-    yaxis_range=[-1, H_total+2], plot_bgcolor="white", height=500
-)
-fig2.update_xaxes(showgrid=True, gridcolor='#F3F4F6')
-fig2.update_yaxes(showgrid=True, gridcolor='#F3F4F6')
-st.plotly_chart(fig2, use_container_width=True)
+    # วาดลูกศร Leeward (ด้านหลัง สีส้ม ค่าคงที่)
+    fig1.add_annotation(x=B, y=H_total/2, ax=B+4, ay=H_total/2, xref="x", yref="y", axref="x", ayref="y",
+                        text=f"<b>Leeward: {p_leeward:.1f}</b>", showarrow=True, arrowhead=2, arrowsize=1.2, arrowcolor="#EA580C", font=dict(color="#EA580C", size=13))
+    
+    # วาดลูกศร Roof (หลังคาแบน สีม่วง ชี้ขึ้น)
+    fig1.add_annotation(x=B/2, y=H_total, ax=B/2, ay=H_total+2.5, xref="x", yref="y", axref="x", ayref="y",
+                        text=f"<b>Roof Uplift: {p_roof:.1f} kgf/m²</b>", showarrow=True, arrowhead=2, arrowsize=1.2, arrowcolor="#9333EA", font=dict(color="#9333EA", size=13))
+                           
+    fig1.update_layout(xaxis_title="ความกว้างอาคาร B (m)", yaxis_title="ระดับความสูง z (m)", 
+                       yaxis_range=[-1, H_total+3.5], xaxis_range=[-6, B+6], height=450, plot_bgcolor="white", margin=dict(t=30, b=30))
+    fig1.update_xaxes(showgrid=True, gridcolor='#E5E7EB')
+    fig1.update_yaxes(showgrid=True, gridcolor='#E5E7EB')
+    st.plotly_chart(fig1, use_container_width=True)
 
-# ==========================================
-# ส่วนแสดงรายงานการคำนวณและสรุป Base Shear
-# ==========================================
-st.markdown("---")
-st.subheader("📑 4. รายการคำนวณและสรุปแรงเฉือนฐานอาคาร (Calculation Book & Base Shear)")
+    st.markdown("---")
 
-# แสดงกล่องสรุปแรงเฉือนรวมที่ฐานอาคารเด่นชัด
-st.metric(label="💥 แรงเฉือนที่ฐานอาคารรวมทั้งหมดเนื่องจากแรงลม (Total Base Shear - V_base)", value=f"{total_base_shear_kn:.2f} kN")
+    # แผนภาพที่ 2 อยู่ด้านล่าง กว้างเต็มจอ
+    st.subheader("📐 2. ขอบเขตพื้นที่รับลมหน้าตรง (Elevation View - ด้านรับลม L)")
+    
+    fig2 = go.Figure()
+    colors = ["#93C5FD", "#BFDBFE", "#DBEAFE"] # ไล่เฉดสีฟ้า
+    
+    for idx, f in enumerate(floors_data):
+        c = colors[idx % len(colors)]
+        fig2.add_trace(go.Scatter(
+            x=[0, L, L, 0, 0], y=[f['z_bottom'], f['z_bottom'], f['z_top'], f['z_top'], f['z_bottom']],
+            fill="toself", fillcolor=c, line=dict(color="#2563EB", width=2), showlegend=False
+        ))
+        # แสดงป้ายพื้นที่ชัดเจน
+        fig2.add_annotation(x=L/2, y=f['z_mid'], text=f"<b>ชั้น {f['floor']}: Area = {f['trib_area']:.1f} m²</b><br>(กว้าง {L}ม. × สูงช่วงชั้น {f['h']}ม.)", 
+                            showarrow=False, font=dict(color="#1E3A8A", size=14))
 
-report = f"""
-### **รายการคำนวณเชิงวิศวกรรม (Engineering Report)**
-* **มาตรฐานอ้างอิง:** มาตรฐาน มยผ. 1311-50
-* **รูปทรงและพื้นที่โครงสร้าง:** กว้าง $B$ = {B} ม., ยาว $L$ = {L} ม., ความสูงรวม = {H_total:.2f} ม. (${num_stories}$ ชั้น)
+    fig2.update_layout(xaxis_title="ความยาวหน้าแผงผนังรับแรง L (m)", yaxis_title="ระดับความสูง z (m)", 
+                       yaxis_range=[-1, H_total+2], height=450, plot_bgcolor="white", margin=dict(t=30, b=30))
+    fig2.update_xaxes(showgrid=True, gridcolor='#E5E7EB')
+    fig2.update_yaxes(showgrid=True, gridcolor='#E5E7EB')
+    st.plotly_chart(fig2, use_container_width=True)
 
-#### **1. ตัวแปรอ้างอิงแรงดันลมทางอุตุนิยมวิทยา**
-* ความเร็วลมออกแบบพื้นฐาน ($V$) = **{V_input} m/s**
-* หน่วยแรงลมอ้างอิงคำนวณได้ ($q$) = $\\frac{{0.5 \\cdot 1.25 \\cdot {V_input}^2}}{{9.80665}}$ = **{q:.2f} kgf/m²**
-* สภาพภูมิประเทศเลือกใช้คลาส = **{exposure}**
-* ค่าตัวคูณแรงลมกระโชก ($C_g$) = **{Cg_input}**
-
-#### **2. ตารางแสดงผลการคำนวณหน่วยแรงและแรงลัพธ์สะสมรายชั้น**
-ต่อไปนี้คือตารางสรุปพารามิเตอร์ $C_e$, แรงดันลมที่ผนัง และการส่งถ่ายแรงลัพธ์รายชั้นเข้าสู่โครงสร้างหลัก:
-"""
-st.markdown(report)
-
-# สร้าง DataFrame ตารางเพื่อสรุปตัวเลขให้อ่านและคัดลอกง่าย
-table_rows = []
-for s in story_data:
-    table_rows.append({
-        "ชั้นที่": f"ชั้น {s['story']}",
-        "ความสูงช่วง (ม.)": s['height'],
-        "ระดับพิกัด z (ม.)": f"{s['z_bottom']:.1f} ถึง {s['z_top']:.1f}",
-        "สัมประสิทธิ์ Ce": round(s['Ce'], 3),
-        "Windward (kgf/m²)": round(s['p_w'], 1),
-        "Leeward (kgf/m²)": round(p_leeward, 1),
-        "พื้นที่รับลม A (m²)": round(s['trib_area'], 1),
-        "แรงลัพธ์ประจำชั้น (kN)": round(s['force_kn'], 2)
-    })
-df_report = pd.DataFrame(table_rows)
-st.dataframe(df_report, use_container_width=True, hide_index=True)
-
-# วิธีทำคำนวณ Base Shear ทีละสเต็ปอย่างละเอียด
-st.markdown("#### **3. ขั้นตอนการคำนวณแรงเฉือนฐานอาคารสุทธิ ($V_{{base}}$)**")
-st.markdown("แรงเฉือนฐานรวมเกิดจากการสะสมแรงลมกระทำภายนอกของผนังรับลม (Windward) และผนังตามลม (Leeward) ของทุกชั้นโครงสร้างเข้าด้วยกัน:")
-
-math_steps = ""
-for s in story_data:
-    math_steps += f"""
-* **ชั้นที่ {s['story']}:** * สมการ: $F_{s['story']} = (p_{{windward}} - p_{{leeward}}) \\times A_{{trib}} \\times \\frac{{9.80665}}{{1000}}$
-  * แทนค่า: $F_{s['story']} = ({s['p_w']:.2f} - ({p_leeward:.2f})) \\times {s['trib_area']:.1f} \\times 0.00980665$ = **{s['force_kn']:.2f} kN**
-"""
-st.markdown(math_steps)
-
-st.markdown(f"""
----
-**⚡ ผลรวมสมการแรงเฉือนฐานรากสุทธิ ($V_{{base}}$):**
-$$V_{{base}} = \\sum F_i = F_1 + F_2 + ... + F_n$$
-$$V_{{base}} = { ' + '.join([f'{s["force_kn"]:.2f}' for s in story_data]) }$$
-$$V_{{base}} = \\mathbf{{{total_base_shear_kn:.2f}\\text{{ kN}}}}$$
-
-*หมายเหตุ: ในการคำนวณสมดุลแรงเฉือนรวมของโครงสร้างอาคาร แรงดันลมภายใน ($p_{{internal}}$) จะมีขนาดเท่ากันแต่ทิศทางตรงกันข้ามกระทำยันผนังภายในทั้งสองฝั่ง จึงหักล้างกันเองหมดไปโดยปริยาย ทำให้ค่าแรงเฉือนฐานรากคิดสมบูรณ์จากผลต่างแรงภายนอกได้อย่างแม่นยำ*
-""")
+    # ----------------------------------------
+    # 2. รายการคำนวณ (Calculation Report)
+    # ----------------------------------------
+    st.markdown("---")
+    st.subheader("📑 3. รายการคำนวณ (Calculation Report) และ Base Shear")
+    
+    st.success(f"### 💥 สรุปแรงเฉือนที่ฐานอาคาร (Total Base Shear): **{total_base_shear_kn:.2f} kN**")
+    
+    report_md = f"""
+    **โครงการ:** คำนวณหน่วยแรงลมออกแบบระบบโครงสร้างหลัก (MWFRS) ตาม มยผ. 1311-50
+    **ลักษณะอาคาร:** {enclosure}, ทรงสี่เหลี่ยมหลังคาแบน, กว้าง {B} ม., ยาว {L} ม., สูงรวม {H_total:.2f} ม. (จำนวน {num_stories} ชั้น)
+    
+    **1. ตัวแปรพื้นฐานและการคำนวณหน่วยแรงลมอ้างอิง ($q$)**
+    * ความเร็วลมพื้นฐาน ($V$) = **{V_input} m/s**
+    * ความหนาแน่นอากาศ ($\\rho$) = 1.25 $kg/m^3$
+    * $q = \\frac{{0.5 \\cdot 1.25 \\cdot ({V_input})^2}}{{9.80665}}$ = **{q:.2f} $kgf/m^2$**
+    
+    **2. สัมประสิทธิ์ประกอบการออกแบบที่ยอดอาคาร (h = {H_total:.2f} ม.)**
+    * สภาพภูมิประเทศ = **{exposure}** $\\rightarrow$ ค่าการเปิดโล่งที่ยอด ($C_{{e,h}}$) = **{Ce_H:.3f}**
+    * $q_h = q \\times C_{{e,h}}$ = **{qh:.2f} $kgf/m^2$**
+    * แรงลมภายนอกด้านตามลม (Leeward): $p_l = {Iw_input} \\times {qh:.2f} \\times {Cg_input} \\times ({Cp_l}) =$ **{p_leeward:.2f} $kgf/m^2$**
+    * แรงลมภายนอกหลังคาแบน (Roof): $p_r = {Iw_input} \\times {qh:.2f} \\times {Cg_input} \\times ({Cp_r}) =$ **{p_roof:.2f} $kgf/m^2$**
+    * แรงดันภายใน: $p_{{int+}}$ = **{p_internal_pos:.2f} $kgf/m^2$** | $p_{{int-}}$ = **{p_internal_neg:.2f} $kgf/m^2$**
+    
+    **3. การคำนวณแรงเฉือนฐานอาคาร (Base Shear Calculation)**
+    แรงเฉือนฐานอาคารหาได้จากการเอา **แรงลมรับลมพัดเข้า ($p_w$)** หักลบด้วย **แรงลมตามลมที่ดูดออก ($p_l$)** (ลบเจอลบกลายเป็นบวก) จากนั้นนำไปคูณกับ **พื้นที่รับลมหน้าตรง ($A_{{trib}}$)** แยกทีละชั้น
+    *สมการแปลงหน่วย:* $F_{{story}} = (p_w - p_l) \\times A_{{trib}} \\times 0.00980665$ (แปลง $kgf$ เป็น $kN$)
+    """
+    st.markdown(report_md)
+    
+    # แสดงการคำนวณ Base shear แจกแจงทีละชั้น
+    for f in floors_data:
+        st.markdown(f"""
+        * **ชั้นที่ {f['floor']} (ความสูงช่วงชั้น {f['h']} ม.):**
+          * ค่า $C_e$ ประจำชั้น = {f['Ce']:.3f} $\\rightarrow p_{{windward}} = {f['p_w']:.2f}$ $kgf/m^2$
+          * พื้นที่รับลม $A_{{trib}}$ = กว้าง {L} ม. $\\times$ สูง {f['h']} ม. = **{f['trib_area']:.1f} $m^2$**
+          * $F_{{{f['floor']}}} = ({f['p_w']:.2f} - ({p_leeward:.2f})) \\times {f['trib_area']:.1f} \\times 0.00980665$ = **{f['force_kn']:.2f} kN**
+        """)
+        
+    st.markdown(f"""
+    **สรุปผลรวมแรงเฉือนฐานอาคารสุทธิ (Total Base Shear - V):**
+    $$V = \\sum F_{{story}} = {' + '.join([f"{f['force_kn']:.2f}" for f in floors_data])}$$
+    $$V = \\mathbf{{{total_base_shear_kn:.2f} \\text{{ kN}}}}$$
+    """)
+    
+    # ตารางสรุปโหลดเผื่อก๊อปปี้ไปวางใน Excel
+    df = pd.DataFrame(floors_data)
+    df = df[['floor', 'h', 'Ce', 'p_w', 'trib_area', 'force_kn']]
+    df.columns = ['ชั้นที่', 'ความสูงชั้น (m)', 'Ce', 'Windward (kgf/m²)', 'Tributary Area (m²)', 'Story Force (kN)']
+    st.dataframe(df, use_container_width=True, hide_index=True)
