@@ -312,8 +312,6 @@ with tab2:
 
 # --- TAB 3: Calculation & Export ---
 with tab3:
-# สมมติว่าโครงสร้างหลักของ Tab ถูกแบ่งไว้ประมาณนี้
-# tab_graph, tab_calc = st.tabs(["📊 แผนภาพแรงลม", "📝 รายการคำนวณแบบละเอียด"])
     st.title("📝 รายการคำนวณแรงลมตามมาตรฐาน (Detailed Wind Load Report)")
     st.markdown("---")
     
@@ -323,15 +321,14 @@ with tab3:
     st.subheader("1. ข้อมูลรูปทรงอาคารและข้อกำหนดเบื้องต้น")
     col1, col2, col3 = st.columns(3)
     with col1:
-        st.markdown(f"**ความกว้างอาคาร (B):** `{B}` เมตร")
-        st.markdown(f"**ความสูงรวมอาคาร (H):** `{H_total}` เมตร")
+        st.markdown(f"**ความกว้างอาคารด้านขนานลม (B):** `{B}` เมตร")
+        st.markdown(f"**ความยาวอาคารด้านตั้งฉากลม (L):** `{L}` เมตร")
     with col2:
-        st.markdown(f"**กรณีแรงลมที่เลือก (Load Case):** `{mode}`")
-        st.markdown(f"**หน่วยการคำนวณแรงลัพธ์:** `{unit_display}`")
+        st.markdown(f"**กรณีแรงลมที่เลือก (Load Case):** `{view_opt}`")
+        st.markdown(f"**หน่วยการคำนวณแรงลัพธ์:** `{unit_opt}`")
     with col3:
-        # หากมีตัวแปรความลึกอาคาร (L) หรือความเร็วลม (V) สามารถนำมาใส่เพิ่มในหน้านี้ได้ครับ
-        st.markdown(f"**จำนวนชั้นโครงสร้าง:** `{len(floors)}` ชั้น")
-        st.markdown(f"**จุดส่งถ่ายแรงข้าง:** ระดับพื้นผิวอาคาร ($z_{{top}}$)")
+        st.markdown(f"**ความสูงรวมอาคาร (H):** `{H_total:.2f}` เมตร")
+        st.markdown(f"**จำนวนชั้นโครงสร้าง:** `{len(floors_data)}` ชั้น")
         
     st.write("")
 
@@ -350,10 +347,10 @@ with tab3:
     
     st.markdown("**สมการแรงลัพธ์ Point Load ประจำชั้น เพื่อกระจายเข้าสู่แผ่นพื้น (Net Story Force, $F_{net}$):**")
     st.latex(r"F_{net} = F_{windward} - F_{leeward}")
-    st.latex(r"F_{net} = (p_{w} \cdot A_w) - (p_{l} \cdot A_l)")
+    st.latex(r"F_{net} = (p_{w} \cdot A_front) - (p_{l} \cdot A_front)")
     
-    st.caption("💡 *หมายเหตุทางวิศวกรรม: เนื่องด้วยพื้นที่รับลมฝั่งหน้าและหลังของช่วงชั้นเดียวกันมีขนาดเท่ากัน ($A_w = A_l = B \times h_{floor}$) "
-               "ส่งผลให้แรงดันภายในอาคาร ($p_internal$) ที่ดันพุ่งออกหรือดูดเข้าทุกทิศทางด้วยขนาดเท่าๆ กัน จะเกิดการหักล้างกันเองในแนวราบเสมอ (Cancel Out) "
+    st.caption("💡 *หมายเหตุทางวิศวกรรม: เนื่องด้วยพื้นที่รับลมฝั่งหน้าและหลังของช่วงชั้นเดียวกันมีขนาดเท่ากัน ($A_front = L \times h$) "
+               "ส่งผลให้แรงดันภายในอาคาร ($p_{internal}$) ที่ดันพุ่งออกหรือดูดเข้าทุกทิศทางด้วยขนาดเท่าๆ กัน จะเกิดการหักล้างกันเองในแนวราบเสมอ (Cancel Out) "
                "ทำให้ค่า Point Load สุทธิแนวราบของโครงสร้างมีค่าเท่ากันในทุกกรณีโหลดเคส*")
 
     st.markdown("---")
@@ -365,22 +362,27 @@ with tab3:
     st.markdown("คลิกที่แถบแต่ละชั้นเพื่อตรวจสอบขั้นตอนการแทนค่าตัวเลขแบบละเอียด:")
 
     # วนลูปเพื่อแตกรายการคำนวณแบบ Step-by-Step ของแต่ละชั้น
-    for idx, f in enumerate(floors):
-        # คำนวณความสูงช่วงชั้นจริง (h) และพื้นที่รับลมของชั้นนั้นๆ
-        z_bottom = floors[idx-1]['z_top'] if idx > 0 else 0
-        h_floor = f['z_top'] - z_bottom
-        area_floor = B * h_floor
+    for idx, f in enumerate(floors_data):
+        z_bottom = f['z_bot']
+        h_floor = f['h']
+        area_floor = f['area_front']
         
         # ดึงค่าหน่วยแรงดันและแรงลัพธ์ตามโหลดเคสปัจจุบันมาแสดงผล
-        if mode == "External":
-            p_w_val = f['p_w']; p_l_val = p_leeward
-            f_w_val = f['force_w_ext']; f_l_val = f['force_l_ext']
-        elif mode == "Case 1":
-            p_w_val = f['net_w_c1']; p_l_val = net_l_c1
-            f_w_val = f['force_w_c1']; f_l_val = f['force_l_c1']
+        if view_opt == "External":
+            p_w_val = f['p_w']
+            p_l_val = p_leeward
+            f_w_val = f['force_w_ext']
+            f_l_val = f['force_l_ext']
+        elif view_opt == "Case 1":
+            p_w_val = f['net_w_c1']
+            p_l_val = net_l_c1
+            f_w_val = f['force_w_c1']
+            f_l_val = f['force_l_c1']
         else:
-            p_w_val = f['net_w_c2']; p_l_val = net_l_c2
-            f_w_val = f['force_w_c2']; f_l_val = f['force_l_c2']
+            p_w_val = f['net_w_c2']
+            p_l_val = net_l_c2
+            f_w_val = f['force_w_c2']
+            f_l_val = f['force_l_c2']
             
         net_f_story = f_w_val - f_l_val  # แรงลัพธ์ Point Load รวมประจำชั้น
 
@@ -391,23 +393,23 @@ with tab3:
             c_prop1, c_prop2 = st.columns(2)
             with c_prop1:
                 st.markdown(f"• ความสูงสะสมแผ่นพื้น ($z_{{top}}$): `{f['z_top']:.2f}` ม.")
-                st.markdown(f"• ความสูงช่วงชั้นสัญญลบลักษณ์ ($h$): `{h_floor:.2f}` ม.")
+                st.markdown(f"• ความสูงช่วงชั้นสัญญลักษณ์ ($h$): `{h_floor:.2f}` ม.")
             with c_prop2:
                 st.markdown(f"• พิกัดกึ่งกลางผนังรับแรง ($z_{{mid}}$): `{f['z_mid']:.2f}` ม.")
-                st.markdown(f"• พื้นที่รับแรงรับลมช่วงชั้น ($A = B \times h$): {B} ม. × {h_floor:.2f} ม. = `{area_floor:.2f}` $m^2$")
+                st.markdown(f"• พื้นที่รับแรงรับลมช่วงชั้น ($A = L \times h$): {L} ม. × {h_floor:.2f} ม. = `{area_floor:.2f}` $m^2$")
             
             st.markdown("<div style='border-top: 1px dashed #ddd; margin: 10px 0;'></div>", unsafe_allow_html=True)
             
             # ลำดับการคำนวณและแทนค่าตัวเลข
             st.markdown(f"**ขั้นตอนที่ 1: คำนวณแรงฝั่งรับลม (Windward Force, $F_{{windward}}$)**")
             st.latex(r"F_{windward} = p_{windward} \times A")
-            st.markdown(f"👉 **แทนค่า:** $F_{{windward}} = {p_w_val:.2f} \\text{{ kgf/m}}^2 \\times {area_floor:.2f} \\text{{ m}}^2 \\times (1 \\text{{ kN}} / 101.971 \\text{{ kgf}})^*$")
+            st.markdown(f"👉 **แทนค่า:** $F_{{windward}} = {p_w_val:.2f} \\text{{ kgf/m}}^2 \\times {area_floor:.2f} \\text{{ m}}^2 \\times 0.00980665^*$")
             st.markdown(f"👉 **ผลลัพธ์:** $F_{{windward}} = \\mathbf{{{f_w_val:.2f}\\text{{ kN}}}}$")
             
             st.markdown(f"**ขั้นตอนที่ 2: คำนวณแรงฝั่งท้ายลม (Leeward Force, $F_{{leeward}}$)**")
             st.latex(r"F_{leeward} = p_{leeward} \times A")
-            st.markdown(f"👉 **แทนค่า:** $F_{{leeward}} = {p_l_val:.2f} \\text{{ kgf/m}}^2 \\times {area_floor:.2f} \\text{{ m}}^2 \\times (1 \\text{{ kN}} / 101.971 \\text{{ kgf}})^*$")
-            st.markdown(f"👉 **ผลลัพธ์:** $F_{{leeward}} = \\mathbf{{{f_l_val:.2f}\\text{{ kN}}}}$ *(เครื่องหมายลบแสดงทิศทางพุ่งออกจากผิวอาคาร)*")
+            st.markdown(f"👉 **แทนค่า:** $F_{{leeward}} = {p_l_val:.2f} \\text{{ kgf/m}}^2 \\times {area_floor:.2f} \\text{{ m}}^2 \\times 0.00980665^*$")
+            st.markdown(f"👉 **ผลลัพธ์:** $F_{{leeward}} = \\mathbf{{{f_l_val:.2f}\\text{{ kN}}}}$ *(ทิศทางพุ่งออกจากผิวอาคาร)*")
             
             st.markdown(f"**ขั้นตอนที่ 3: สรุปแรงลัพธ์แบบจุดกระทำที่ระดับแผ่นพื้น (Net Story Point Load)**")
             st.latex(r"F_{net} = F_{windward} - F_{leeward}")
@@ -424,13 +426,22 @@ with tab3:
     
     # จัดเตรียมข้อมูลลง DataFrame ให้เป็นระเบียบ เรียบง่าย อ่านง่าย
     summary_list = []
-    for idx, f in enumerate(floors):
-        if mode == "External":
-            p_w = f['p_w']; p_l = p_leeward; f_w = f['force_w_ext']; f_l = f['force_l_ext']
-        elif mode == "Case 1":
-            p_w = f['net_w_c1']; p_l = net_l_c1; f_w = f['force_w_c1']; f_l = f['force_l_c1']
+    for idx, f in enumerate(floors_data):
+        if view_opt == "External":
+            p_w = f['p_w']
+            p_l = p_leeward
+            f_w = f['force_w_ext']
+            f_l = f['force_l_ext']
+        elif view_opt == "Case 1":
+            p_w = f['net_w_c1']
+            p_l = net_l_c1
+            f_w = f['force_w_c1']
+            f_l = f['force_l_c1']
         else:
-            p_w = f['net_w_c2']; p_l = net_l_c2; f_w = f['force_w_c2']; f_l = f['force_l_c2']
+            p_w = f['net_w_c2']
+            p_l = net_l_c2
+            f_w = f['force_w_c2']
+            f_l = f['force_l_c2']
             
         summary_list.append({
             "ชื่อชั้น": f"ชั้น {f['floor']}",
@@ -442,11 +453,10 @@ with tab3:
             "Point Load ประจำชั้น (kN)": f"{(f_w - f_l):.2f}"
         })
         
-    import pandas as pd
     df_report = pd.DataFrame(summary_list)
     
     # แสดงผลตารางแบบเต็มความกว้าง ซ่อน Index เพื่อความสวยงามสะอาดตา
     st.dataframe(df_report, use_container_width=True, hide_index=True)
     
     st.success("💡 **คำแนะนำ:** ตารางด้านบนจะสรุปให้เห็นชัดเจนว่าแรง Point Load ในแต่ละชั้น วิ่งกระทำตรงพิกัด `z_top` แนวเส้นประชั้นพื้นพอดี "
-               "ซึ่งสอดคล้องกับพฤติกรรมการป้อนแรง Lateral Load เข้าสู่ Rigidity Diaphragm ในแบบจำลองทางวิศวกรรมครับ")
+               "ซึ่งสอดคล้องกับพฤติกรรมการป้อนแรง Lateral Load เข้าสู่ Diaphragm ของแบบจำลองอาคาร เช่น ใน ETABS / SAP2000 ครับ")
