@@ -344,8 +344,8 @@ with tab3:
     
     st.markdown("**การคำนวณแรงดันภายในอาคาร (Internal Pressure, $p_{{internal}}$):**")
     st.latex(r"p_{internal} = q_h \cdot (\pm GC_{pi}) \quad [q_h = q \cdot C_{e,H} = " + f"{q:.2f} \\times {Ce_H:.3f} = {qh:.2f}\\text{{ kgf/m}}^2]")
-    st.markdown(f"• กรณีแรงลมดูดภายใน (Internal Suction: คาสัญญาณลบ): $p_{{int,-}} = {qh:.2f} \\times (-{GCpi}) = \\mathbf{{{p_int_neg:.2f}\\text{{ kgf/m}}^2}}$")
-    st.markdown(f"• กรณีแรงดันพุ่งออกภายใน (Internal Pressure: คาสัญญาณบวก): $p_{{int,+}} = {qh:.2f} \\times {GCpi} = \\mathbf{{{p_int_pos:.2f}\\text{{ kgf/m}}^2}}$")
+    st.markdown(f"• กรณีแรงลมดูดภายใน (Internal Suction: เครื่องหมายลบ): $p_{{int,-}} = {qh:.2f} \\times (-{GCpi}) = \\mathbf{{{p_int_neg:.2f}\\text{{ kgf/m}}^2}}$")
+    st.markdown(f"• กรณีแรงดันพุ่งออกภายใน (Internal Pressure: เครื่องหมายบวก): $p_{{int,+}} = {qh:.2f} \\times {GCpi} = \\mathbf{{{p_int_pos:.2f}\\text{{ kgf/m}}^2}}$")
 
     # ----------------------------------------------------
     # SECTION 2: สมการควบคุมทางวิศวกรรม
@@ -425,7 +425,6 @@ with tab3:
             
             st.markdown("**1. หน่วยแรงดันฝั่งรับลม (Windward Net Pressure, $p_{{windward}}$):**")
             st.latex(r"p_{w} = (I_w \cdot q_z \cdot C_g \cdot C_{p,w}) - p_{internal}")
-            # แสดงค่าภายนอกก่อนหักลบภายในให้เห็นภาพชัดๆ
             p_w_ext_only = Iw_input * q_z_mid * Cg_input * Cp_w
             st.markdown(f"👉 **แทนค่า:** $p_{{w}} = ({Iw_input} \\times {q_z_mid:.2f} \\times {Cg_input} \\times {Cp_w}) - ({p_int_val:.2f}) = {p_w_ext_only:.2f} - ({p_int_val:.2f})$")
             st.markdown(f"👉 **ผลลัพธ์แรงดันผิว Windward:** $p_{{windward}} = \\mathbf{{{p_w_val:.2f}\\text{{ kgf/m}}^2}}$")
@@ -451,7 +450,6 @@ with tab3:
             st.latex(r"F_{net} = F_{windward} - F_{leeward}")
             st.markdown(f"👉 **แทนค่าหักล้างทิศทาง:** $F_{{net}} = {f_w_val:.2f} - ({f_l_val:.2f})$")
             
-            # สรุปผลลัพธ์ที่นำไปคีย์ลงโปรแกรมโครงสร้าง
             st.success(f"🎯 **บทสรุปกำลังชั้น {f['floor']}:** เกิดแรงปะทะด้านข้างรวมสุทธิ **{net_f_story:.2f} kN** กระทำทางราบเข้าสู่ Diaphragm แผ่นพื้นโครงสร้างที่จุดพิกัดความสูงสะสม **z = {f['z_top']:.2f} ม.**")
 
     st.write("---")
@@ -463,6 +461,8 @@ with tab3:
     st.markdown("ตารางนี้ทำการรวบรวมตัวแปรขั้นกลางทั้งหมดเพื่อส่งรายงานคำนวณให้วิศวกรผู้ตรวจสอบไล่สายตาตรวจเช็คได้อย่างรวดเร็ว:")
     
     summary_list = []
+    current_case_forces = [] # เตรียมเก็บแรงสำหรับบวก Base Shear
+    
     for idx, f in enumerate(floors_data):
         q_z_mid = q * f['Ce']
         if view_opt == "External":
@@ -471,6 +471,9 @@ with tab3:
             p_w = f['net_w_c1']; p_l = net_l_c1; f_w = f['force_w_c1']; f_l = f['force_l_c1']
         else:
             p_w = f['net_w_c2']; p_l = net_l_c2; f_w = f['force_w_c2']; f_l = f['force_l_c2']
+            
+        net_force = f_w - f_l
+        current_case_forces.append(net_force)
             
         summary_list.append({
             "ระดับชั้น": f"ชั้น {f['floor']}",
@@ -482,7 +485,7 @@ with tab3:
             "พื้นที่รับลม A (m²)": f"{f['area_front']:.1f}",
             "แรง Windward (kN)": f"{f_w:.2f}",
             "แรง Leeward (kN)": f"{f_l:.2f}",
-            "แรงลัพธ์ Point Load (kN)": f"{(f_w - f_l):.2f}"
+            "แรงลัพธ์ Point Load (kN)": f"{net_force:.2f}"
         })
         
     df_report = pd.DataFrame(summary_list)
@@ -490,3 +493,23 @@ with tab3:
     
     st.info("💡 **หมายเหตุวิศวกรรมการป้อนโหลดข้าง:** ค่าในคอลัมน์ขวาสุด 'แรงลัพธ์ Point Load (kN)' คือค่าแรง Lateral Force รวมผลของฝังรับลมและท้ายลมแล้ว "
              "ซึ่งสามารถนำไปกรอกลงในช่อง Diaphragm Lateral Load หรือป้อนเข้าเป็น Joint Load ประจำพิกัดชั้นความสูงของแบบจำลองโครงสร้างอาคารได้โดยตรง")
+
+    st.write("---")
+
+    # ----------------------------------------------------
+    # SECTION 5: การคำนวณแรงเฉือนที่ฐานอาคารรวม (Total Base Shear)
+    # ----------------------------------------------------
+    st.subheader("5. การคำนวณแรงเฉือนที่ฐานอาคารรวม (Total Base Shear Calculation)")
+    st.markdown("แรงเฉือนที่ฐานอาคารแนวนอน ($V_{wind}$) หาได้จากการรวมแรงปะทะด้านข้าง (Point Load) จากทุกชั้นโครงสร้างเข้าด้วยกัน:")
+    
+    st.latex(r"V_{wind} = \sum_{i=1}^{n} F_{net, i} = F_{net, 1} + F_{net, 2} + \dots + F_{net, n}")
+    
+    # สร้างสมการการบวกตัวเลขโชว์แบบสวยๆ
+    force_strings = [f"{force:.2f}" for force in current_case_forces]
+    equation_str = " + ".join(force_strings)
+    total_base_shear_current = sum(current_case_forces)
+    
+    st.markdown(f"👉 **แทนค่าจากตาราง (กรณี {view_opt}):** $V_{{wind}} = {equation_str}$")
+    st.markdown(f"👉 **ผลลัพธ์แรงเฉือนฐานรวม:** $V_{{wind}} = \\mathbf{{{total_base_shear_current:.2f}\\text{{ kN}}}}$")
+    
+    st.success(f"💥 **สรุปทางวิศวกรรม:** โครงสร้างหลักและระบบต้านทานแรงด้านข้าง (MWFRS / Shear Wall / Bracing) รวมถึงการต้านทานการพลิกคว่ำของฐานราก (Overturning Moment) จะต้องถูกออกแบบให้สามารถรับแรงเฉือนรวมที่ฐานจากการปะทะของลมอย่างน้อย **{total_base_shear_current:.2f} kN** (ตัวเลขแสดงตามสถานะ {view_opt})")
