@@ -32,7 +32,7 @@ def get_Ce_details(z, exposure):
     if z < 6.0: exp = f"ความสูง {z}ม. < 6.0ม. ให้คิดที่ 6.0ม. | " + exp
     return ce, exp
 
-# ฟังก์ชันคำนวณค่า Gust Effect Factor (Cg) แบบพลศาสตร์ตาม มยผ. 1311-50 / ASCE 7
+# ฟังก์ชันคำนวณค่า Gust Effect Factor (Cg) ที่ปรับปรุงให้ตรงกับนิยาม UI (B=ขนานลม, L=ตั้งฉากลม)
 def calculate_dynamic_cg(H, B, L, T1, damping, exposure, V):
     n1 = 1.0 / T1 if T1 > 0 else 1.0
     z_bar = max(0.6 * H, 4.5) # ความสูงประสิทธิผล
@@ -42,7 +42,7 @@ def calculate_dynamic_cg(H, B, L, T1, damping, exposure, V):
         c, ell, epsilon, alpha_bar, b_bar = 0.30, 98.0, 0.33, 0.15, 0.65
     elif 'B' in exposure:
         c, ell, epsilon, alpha_bar, b_bar = 0.20, 152.0, 0.25, 0.25, 0.45
-    else: # С
+    else: # C
         c, ell, epsilon, alpha_bar, b_bar = 0.15, 198.0, 0.20, 0.35, 0.30
         
     # 1. ความเข้มข้นของลมแปรปรวน (Turbulence Intensity)
@@ -51,19 +51,19 @@ def calculate_dynamic_cg(H, B, L, T1, damping, exposure, V):
     # 2. มาตราส่วนความยาวของลมแปรปรวน (Integral Length Scale)
     Lz_bar = ell * ((z_bar / 10.0) ** epsilon)
     
-    # 3. Background Response (Q)
-    Q = math.sqrt(1.0 / (1.0 + 0.63 * (((B + H) / Lz_bar) ** 0.63)))
+    # 3. Background Response (Q) -> ใช้ L (ตั้งฉากลม) + H
+    Q = math.sqrt(1.0 / (1.0 + 0.63 * (((L + H) / Lz_bar) ** 0.63)))
     
     # 4. Resonant Response (R)
-    # ความเร็วลมเฉลี่ยรายชั่วโมง ณ ความสูง z_bar
     V_bar_z = b_bar * ((z_bar / 10.0) ** alpha_bar) * V
     
     N1 = (n1 * Lz_bar) / V_bar_z if V_bar_z > 0 else 0.1
     Rn = (7.47 * N1) / ((1.0 + 10.3 * N1) ** (5.0 / 3.0))
     
+    # คำนวณพจน์ตัวคูณลดทอนตามมิติอาคาร
     eta_h = (4.6 * n1 * H) / V_bar_z if V_bar_z > 0 else 0.1
-    eta_B = (4.6 * n1 * B) / V_bar_z if V_bar_z > 0 else 0.1
-    eta_L = (15.4 * n1 * L) / V_bar_z if V_bar_z > 0 else 0.1
+    eta_B = (4.6 * n1 * L) / V_bar_z if V_bar_z > 0 else 0.1 # L คือด้านตั้งฉากลม (ใช้ตัวคูณ 4.6)
+    eta_L = (15.4 * n1 * B) / V_bar_z if V_bar_z > 0 else 0.1 # B คือด้านขนานลม (ใช้ตัวคูณ 15.4)
     
     def get_R_size(eta):
         if eta <= 0: return 1.0
@@ -75,19 +75,15 @@ def calculate_dynamic_cg(H, B, L, T1, damping, exposure, V):
     
     R = math.sqrt((1.0 / damping) * Rn * Rh * RB * (0.53 + 0.47 * RL))
     
-    # คำนวณค่ารวม Gust Factor (สเกลให้สอดคล้องกับพิกัดระบบ มยผ. ตัวคูณปกติฐานคือ 2.0)
-    # สูตรพลศาสตร์สากล: g_q = 3.4, g_v = 3.4, g_r = sqrt(2*ln(3600*n1)) + 0.577/sqrt(2*ln(3600*n1))
+    # คำนวณค่ารวม Gust Factor
     g_q, g_v = 3.4, 3.4
     term_ln = math.log(3600.0 * n1)
     g_r = math.sqrt(2.0 * term_ln) + 0.577 / math.sqrt(2.0 * term_ln)
     
-    # หาค่าตัวคูณลมกระโชกพลศาสตร์สุทธิ
     Cg_dynamic = 1.0 + 2.0 * max(g_q * Iz_bar * Q, math.sqrt((g_q*Iz_bar*Q)**2 + (g_r*Iz_bar*R)**2))
-    # คุมโครงสร้างไม่ให้ต่ำกว่าค่าเกณฑ์พื้นฐาน
     Cg_final = max(Cg_dynamic, 1.5)
     
     return Cg_final, {"Iz_bar": Iz_bar, "Lz_bar": Lz_bar, "Q": Q, "R": R, "N1": N1, "Rn": Rn, "V_bar_z": V_bar_z}
-
 # ==========================================
 # Streamlit UI Setup & Custom CSS
 # ==========================================
