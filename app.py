@@ -326,6 +326,7 @@ def plot_cross_section(floors, mode, unit_display):
         fig.add_annotation(x=x_head, y=y_head, ax=x_tail, ay=y_tail, xref="x", yref="y", axref="x", ayref="y",
             text=f"<b>{val:.1f} {unit_lbl}</b>", showarrow=True, arrowhead=2, arrowsize=1.2, arrowcolor=col, font=dict(color=col, size=12), xanchor=x_anc)
 
+    # 1. วาดแรงฝั่งรับลม (Windward) หรือ Point Load ตามชั้น
     for f in floors:
         fig.add_shape(type="line", x0=0, y0=f['z_top'], x1=B, y1=f['z_top'], line=dict(color="gray", width=1.5, dash="dash"))
         fig.add_annotation(x=B/2, y=f['z_mid'], text=f"<b>ชั้น {f['floor']}</b>", showarrow=False)
@@ -333,13 +334,41 @@ def plot_cross_section(floors, mode, unit_display):
         if not is_kn:
             val_w = f['p_w'] if mode == "External" else (f['net_w_c1'] if mode == "Case 1" else f['net_w_c2'])
             arr_len = max(2.0, min(3.5, 1.0 + abs(val_w)/30.0))
-            draw_arrow(-arr_len, f['z_mid'], 0, f['z_mid'], val_w, "#DC2626", "right")
+            if val_w >= 0: draw_arrow(-arr_len, f['z_mid'], 0, f['z_mid'], val_w, "#DC2626", "right")
+            else: draw_arrow(0, f['z_mid'], -arr_len, f['z_mid'], val_w, "#9333EA", "left")
         else:
             net_story_force = f['force_c1'] if mode == "Case 1" else (f['force_c2'] if mode == "Case 2" else f['force_w_ext'] - f['force_l_ext'])
             arr_len = max(3.0, min(6.0, 2.0 + abs(net_story_force)/40.0))
             draw_arrow(-arr_len, f['z_top'], 0, f['z_top'], net_story_force, "#2563EB", "right")
 
-    fig.update_layout(title=f"<b>📐 แผนภาพหน้าตัดอาคาร - โหมด {mode} ({unit_lbl})</b>", xaxis_title="ความกว้างขนานลม B (ม.)", yaxis_title="ความสูง z (ม.)", xaxis_range=[-10, B+10], yaxis_range=[-1, H_total + h_roof + 5], height=500, plot_bgcolor="white")
+    # 2. วาดแรงฝั่งท้ายลม (Leeward) และแรงหลังคา (Roof) แบบครบถ้วน!
+    if not is_kn:
+        # วาด Leeward ของแผงผนัง
+        val_l = p_leeward if mode == "External" else (net_l_c1 if mode == "Case 1" else net_l_c2)
+        arr_len = max(2.0, min(3.5, 1.0 + abs(val_l)/30.0))
+        if val_l >= 0: draw_arrow(B+arr_len, H_total/2, B, H_total/2, val_l, "#DC2626", "left")
+        else: draw_arrow(B, H_total/2, B+arr_len, H_total/2, val_l, "#EA580C", "right")
+        
+        # วาดแรงบนหลังคา
+        if "แบน" in roof_type:
+            val_r = p_roof if mode == "External" else (p_roof - p_int_neg if mode == "Case 1" else p_roof - p_int_pos)
+            if val_r >= 0: draw_arrow(B/2, H_total+2.5, B/2, H_total, val_r, "#DC2626", "center")
+            else: draw_arrow(B/2, H_total, B/2, H_total+2.5, val_r, "#9333EA", "center")
+        else:
+            # หลังคาจั่ว: วาดแยกฝั่งรับลมและตามลม (แสดงในแนวดิ่ง)
+            val_rw = p_roof_w if mode == "External" else (p_roof_w - p_int_neg if mode == "Case 1" else p_roof_w - p_int_pos)
+            val_rl = p_roof_l if mode == "External" else (p_roof_l - p_int_neg if mode == "Case 1" else p_roof_l - p_int_pos)
+            draw_arrow(B/4, H_total + h_roof/2 + 2.5, B/4, H_total + h_roof/2, val_rw, "#DC2626" if val_rw >= 0 else "#9333EA", "center")
+            draw_arrow(3*B/4, H_total + h_roof/2 + 2.5, 3*B/4, H_total + h_roof/2, val_rl, "#EA580C" if val_rl >= 0 else "#9333EA", "center")
+            
+    else: # โหมด kN
+        if "จั่ว" in roof_type:
+            # วาดลูกศร Point Load ของแรงเฉือนแนวนอนจากหลังคาจั่ว
+            arr_len = max(3.0, min(6.0, 2.0 + abs(force_roof_horiz)/40.0))
+            draw_arrow(-arr_len, H_total + h_roof/2, 0, H_total + h_roof/2, force_roof_horiz, "#2563EB", "right")
+
+    # ขยายขอบเขตภาพให้คลุมแรงบนหลังคา
+    fig.update_layout(title=f"<b>📐 แผนภาพหน้าตัดอาคาร - โหมด {mode} ({unit_lbl})</b>", xaxis_title="ความกว้างขนานลม B (ม.)", yaxis_title="ความสูง z (ม.)", xaxis_range=[-10, B+10], yaxis_range=[-1, H_total + h_roof + 6], height=550, plot_bgcolor="white")
     return fig
 
 
