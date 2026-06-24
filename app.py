@@ -191,8 +191,8 @@ else:
     dyn_components = None
 
 q = calculate_q(V_input)
-`Ce_H`, _ = get_Ce_details(H_total, exposure)
-qh = q * `Ce_H` * Ct_input 
+Ce_H, _ = get_Ce_details(H_total, exposure)
+qh = q * Ce_H * Ct_input 
 
 p_leeward = Iw_input * qh * Cg_final_used * Cp_l 
 p_int_pos = qh * GCpi     
